@@ -31,7 +31,6 @@ from .serializers import (
     DocumentUploadSerializer,
     EventSerializer,
     FolderSerializer,
-    BulkInvitationCreateSerializer,
     InvitationCreateSerializer,
     InvitationPreviewSerializer,
     InvitationSerializer,

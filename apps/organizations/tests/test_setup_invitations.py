@@ -156,7 +156,8 @@ def test_recipient_declines_by_id(organization, user):
     response = client.post(url("received-invitation-decline", invitation_id=invitation_id))
     assert response.status_code == 204
     assert received(client).data["results"][0]["status"] == "declined"
-    assert client.post(url("received-invitation-accept", invitation_id=invitation_id)).status_code == 400
+    accept = client.post(url("received-invitation-accept", invitation_id=invitation_id))
+    assert accept.status_code == 400
     assert not organization.memberships.filter(user=recipient).exists()
 
 
@@ -166,7 +167,8 @@ def test_others_cannot_see_or_answer_someone_elses_invitation(organization, user
     invitation_id = received(as_user(recipient)).data["results"][0]["id"]
     client = as_user(stranger)
     assert received(client).data["results"] == []
-    assert client.post(url("received-invitation-accept", invitation_id=invitation_id)).status_code == 400
+    accept = client.post(url("received-invitation-accept", invitation_id=invitation_id))
+    assert accept.status_code == 400
     assert not organization.memberships.filter(user=stranger).exists()
 
 

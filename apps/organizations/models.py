@@ -210,7 +210,8 @@ class OrganizationEvent(UUIDTimestampedModel):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="events")
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
     action = models.CharField(max_length=80)
-    target_id = models.CharField(max_length=12, null=True, blank=True, editable=False)
+    # null = the event has no target; an ID reference, not free text.
+    target_id = models.CharField(max_length=12, null=True, blank=True, editable=False)  # noqa: DJ001
     metadata = models.JSONField(default=dict, blank=True)
 
     class Meta:

@@ -7,4 +7,4 @@ class AuthenticationConfig(AppConfig):
     label = "authentication"
 
     def ready(self):
-        from . import signals
+        from . import signals  # noqa: F401 — registers signal handlers

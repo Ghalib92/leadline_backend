@@ -1,7 +1,5 @@
 import uuid
 
-from shortuuid.django_fields import ShortUUIDField
-
 import pytest
 from django.urls import reverse
 from rest_framework.test import APIClient

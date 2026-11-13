@@ -1,8 +1,8 @@
 import uuid
 
 from django.db import models
-
 from shortuuid.django_fields import ShortUUIDField
+
 
 class UUIDTimestampedModel(models.Model):
     """Shared identity and timestamps for domain records."""

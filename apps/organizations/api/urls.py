@@ -30,13 +30,19 @@ urlpatterns = [
     ),
     path("<shortuuid:organization_id>/", views.OrganizationDetailView.as_view(), name="detail"),
     path(
-        "<shortuuid:organization_id>/archive/", views.OrganizationArchiveView.as_view(), name="archive"
+        "<shortuuid:organization_id>/archive/",
+        views.OrganizationArchiveView.as_view(),
+        name="archive",
     ),
     path(
-        "<shortuuid:organization_id>/restore/", views.OrganizationRestoreView.as_view(), name="restore"
+        "<shortuuid:organization_id>/restore/",
+        views.OrganizationRestoreView.as_view(),
+        name="restore",
     ),
     path("<shortuuid:organization_id>/leave/", views.OrganizationLeaveView.as_view(), name="leave"),
-    path("<shortuuid:organization_id>/members/", views.MembershipListView.as_view(), name="members"),
+    path(
+        "<shortuuid:organization_id>/members/", views.MembershipListView.as_view(), name="members"
+    ),
     path(
         "<shortuuid:organization_id>/members/<shortuuid:membership_id>/",
         views.MembershipDetailView.as_view(),
