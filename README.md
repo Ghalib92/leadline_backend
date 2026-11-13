@@ -11,7 +11,7 @@ This repository is the Django REST API and the AI agents (LangGraph). The web ap
 is [`leadline-ui`](../leadline-ui) (React Router); it talks to this API through its
 own `/api/*` proxy.
 
-**Joining the team?** See [`docs/team-plan.md`](docs/team-plan.md) for who builds what next.
+**Plan and progress:** [`my-folder/project.md`](my-folder/project.md).
 
 - [How Leadline works](#how-leadline-works)
 - [Set up locally](#set-up-locally)
