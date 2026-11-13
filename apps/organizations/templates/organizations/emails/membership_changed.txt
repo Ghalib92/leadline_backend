@@ -1,0 +1,12 @@
+{% autoescape off %}
+Your access to {{ organization_name }} on {{ product_name }}
+
+{{ change }}
+
+Role: {{ role }}
+Membership status: {{ status }}
+
+This change applies to this organization. If you have questions, contact one of its admins.
+
+The {{ product_name }} team
+{% endautoescape %}

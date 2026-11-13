@@ -1,0 +1,13 @@
+<!doctype html>
+<html>
+<body style="font-family: Arial, sans-serif; color: #1f2937; line-height: 1.5;">
+  <p>Hello {{ name }},</p>
+  <p>The deadline for <strong>{{ title }}</strong>{% if funder %} ({{ funder }}){% endif %}
+     is <strong>{{ when }}</strong>: {{ deadline|date:"l j F Y" }}.</p>
+  <p>
+    <a href="{{ opportunity_url }}" style="background:#2563eb;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;">Open in {{ product_name }}</a>
+  </p>
+  <p><a href="{{ source_url }}">Read the call</a>. The attached calendar file adds the deadline to your calendar.</p>
+  <p style="color:#6b7280;font-size:12px;">You get this because you are an admin of {{ organization_name }}, or you approved this opportunity.</p>
+</body>
+</html>

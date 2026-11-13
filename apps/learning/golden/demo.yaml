@@ -1,0 +1,184 @@
+# Hand-labeled eval set for the demo organization. Labels are what Acme Africa's
+# team would decide; edit them with the team, not to make a prompt pass.
+#
+# Judge cases: "expected" is approve or reject; min_score / max_score (optional) bound
+# an acceptable score. Extraction cases: page text plus the facts a careful reader
+# would copy from it; fields left out are not checked.
+version: 1
+name: demo
+
+organization:
+  name: Acme Africa
+  profile:
+    organization_type: ngo
+    country: KE
+    operating_countries: [KE, UG, TZ]
+    sectors: [education, technology]
+    team_size: 11-50
+    annual_budget: 250k_1m
+    year_founded: 2018
+    target_regions: [east_africa]
+    eligibility: [registered_nonprofit, youth_led]
+    excluded_keywords: [construction]
+    min_funding_amount: "20000"
+    max_funding_amount: "750000"
+    funding_currency: USD
+  dossier:
+    summary: >-
+      Acme Africa is a youth-led Kenyan NGO that trains young people in data
+      analysis and AI and places them in jobs. In 2025 it trained 1,200 youth in
+      Nairobi and Kisumu with Mastercard Foundation support.
+    focus_areas: [digital skills, youth employment, data science, AI literacy]
+    geographies: [Kenya, Uganda, Tanzania, East Africa]
+    track_record: ["Trained 1,200 youth in Nairobi and Kisumu in 2025",
+                   "Placed 61% of graduates in jobs within six months"]
+    past_funders: [Mastercard Foundation, GIZ]
+    eligibility_facts: [Registered NGO in Kenya since 2018, Youth-led, Audited accounts 2023-2025]
+
+judge:
+  - name: youth-digital-skills-grant-kenya
+    expected: approve
+    min_score: 70
+    opportunity:
+      title: Digital Skills for Youth Employment Grant 2027
+      funder: Lakeside Development Trust
+      opportunity_type: grant
+      summary: Grants of USD 50,000-200,000 for organizations training young people (18-30) in digital and data skills with job placement in East Africa.
+      eligibility: Registered non-profits in Kenya, Uganda or Tanzania with 3+ years of youth training experience.
+      location: East Africa
+      amount_min: "50000"
+      amount_max: "200000"
+      currency: USD
+
+  - name: ict-authority-training-consultancy
+    expected: approve
+    min_score: 55
+    opportunity:
+      title: Consultancy to deliver data literacy bootcamps for county youth
+      funder: Kenya ICT Authority
+      opportunity_type: consultancy
+      summary: Firms or NGOs to design and run 12-week data literacy bootcamps for 600 youth across six counties.
+      eligibility: Registered firms or NGOs in Kenya with proven training delivery.
+      location: Kenya
+
+  - name: eu-digital4development-csos
+    expected: approve
+    min_score: 60
+    opportunity:
+      title: Digital4Development call for African civil society
+      funder: European Union
+      opportunity_type: grant
+      summary: EUR 300,000-700,000 for civil society organizations advancing inclusive digital skills and digital rights in Sub-Saharan Africa.
+      eligibility: Non-profit CSOs registered in Sub-Saharan Africa; consortia welcome.
+      location: Sub-Saharan Africa
+      amount_min: "300000"
+      amount_max: "700000"
+      currency: EUR
+
+  - name: road-rehabilitation-tender
+    expected: reject
+    max_score: 30
+    opportunity:
+      title: Rehabilitation of Kisumu-Kakamega road, lot 2
+      funder: Kenya Rural Roads Authority
+      opportunity_type: tender
+      summary: Civil works contractors to rehabilitate 42 km of road, including drainage and construction supervision.
+      eligibility: Registered civil works contractors, NCA category 1-3.
+      location: Kenya
+
+  - name: us-universities-only
+    expected: reject
+    max_score: 30
+    opportunity:
+      title: Research Experiences for Undergraduates in Data Science
+      funder: US National Science Foundation
+      opportunity_type: grant
+      summary: Funding for US universities to host undergraduate summer research in data science.
+      eligibility: US institutions of higher education only.
+      location: United States
+
+  - name: youth-jobs-peru
+    expected: reject
+    max_score: 45
+    opportunity:
+      title: Youth employment and digital skills programme, Peru
+      funder: Inter-American Development Bank
+      opportunity_type: grant
+      summary: Grants for organizations in Peru training young people in digital skills.
+      eligibility: Organizations registered and operating in Peru.
+      location: Peru
+
+  - name: too-large-consortium
+    expected: reject
+    max_score: 50
+    opportunity:
+      title: National digital backbone and skills consortium
+      funder: African Development Bank
+      opportunity_type: rfp
+      summary: EUR 20 million programme for consortia building fibre infrastructure and digital skills centres nationwide.
+      eligibility: Consortia led by firms with EUR 50M+ turnover.
+      location: Kenya
+      amount_min: "15000000"
+      amount_max: "20000000"
+      currency: EUR
+
+  - name: individual-consultant-post
+    expected: reject
+    max_score: 35
+    opportunity:
+      title: Individual consultant - monitoring and evaluation specialist
+      funder: World Bank
+      opportunity_type: consultancy
+      summary: An individual M&E specialist for a youth employment project, 10 years of experience and a master's degree required.
+      eligibility: Individual consultants only.
+      location: Uganda
+
+extraction:
+  - name: open-grant-with-amounts
+    url: https://example.org/calls/youth-data-fund
+    source: example.org
+    page: |
+      Youth Data Fund 2027 - Call for Proposals
+      Issued by the Northbridge Foundation.
+      The Youth Data Fund supports non-profit organizations in East Africa that train
+      young people aged 18-30 in data analysis. Grants range from USD 25,000 to
+      USD 150,000 for projects of 12 to 24 months.
+      Eligibility: registered non-profits in Kenya, Uganda, Tanzania or Rwanda.
+      Applications close on 15 March 2027 at 17:00 EAT.
+      Required: project narrative, budget, registration certificate, audited accounts.
+    expected:
+      is_opportunity: true
+      is_open: true
+      opportunity_type: grant
+      funder: Northbridge Foundation
+      amount_min: 25000
+      amount_max: 150000
+      currency: USD
+      deadline: "2027-03-15"
+
+  - name: closed-call
+    url: https://example.org/calls/2023-innovation-prize
+    source: example.org
+    page: |
+      Innovation Prize 2023
+      The Coastal Communities Fund awarded prizes of up to EUR 10,000 to community
+      innovators. Applications closed on 30 June 2023. Winners were announced in
+      September 2023. Thank you to everyone who applied.
+    expected:
+      is_opportunity: true
+      is_open: false
+      opportunity_type: award
+      funder: Coastal Communities Fund
+      currency: EUR
+      deadline: "2023-06-30"
+
+  - name: news-not-an-opportunity
+    url: https://example.org/news/funding-roundup
+    source: example.org
+    page: |
+      Ten funding opportunities for African NGOs this month
+      Our monthly roundup lists grants from several foundations, from health to
+      education. Follow the links below to read about each one. Subscribe to our
+      newsletter to get the roundup every month.
+    expected:
+      is_opportunity: false

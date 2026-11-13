@@ -1,0 +1,42 @@
+{% extends "common/emails/base.html" %} {% block title %} Your access to {{
+organization_name }} {% endblock title %} {% block preheader %} Your
+organization access has changed. {% endblock preheader %} {% block content %}
+
+<p
+  style="
+    margin: 0 0 8px;
+    color: #087b87;
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 1px;
+  "
+>
+  ORGANIZATION UPDATE
+</p>
+<h1
+  style="margin: 0 0 20px; color: #172b4d; font-size: 28px; line-height: 35px"
+>
+  Your access has changed.
+</h1>
+<p>
+  This update concerns your membership in
+  <strong>{{ organization_name }}</strong>.
+</p>
+<p>{{ change }}</p>
+<p
+  style="
+    padding: 16px 20px;
+    background-color: #eef7f7;
+    border: 1px solid #c5e4e6;
+    border-radius: 8px;
+  "
+>
+  Role: <strong>{{ role }}</strong><br />Membership status:
+  <strong>{{ status }}</strong>
+</p>
+<p style="font-size: 14px; color: #526279">
+  This change applies to this organization. If you have questions, contact one
+  of its admins.
+</p>
+
+{% endblock content %}

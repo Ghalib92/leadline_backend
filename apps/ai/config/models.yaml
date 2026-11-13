@@ -1,0 +1,99 @@
+# Which model each agent role uses.
+#
+# Model ids are never written here. Each tier reads its model id from the
+# environment as <TIER>_MODEL (LIGHT_MODEL, RESEARCH_MODEL, ANSWER_MODEL), so
+# switching models is an .env change. Role settings override `defaults`; any
+# value left unset falls back to the provider's own default.
+#
+# reasoning_effort (low | medium | high) applies to reasoning models such as
+# gpt-oss. Remove it from a role if its tier points at a non-reasoning model.
+version: 1
+
+tiers: [light, research, answer]
+
+defaults:
+  max_tokens: 4096
+  timeout_seconds: 60
+  max_retries: 2
+  # gpt-oss on Groq sometimes answers a forced tool call with plain text ("Tool
+  # choice is required, but model did not call a tool"); its JSON-schema response
+  # format is more reliable for structured outputs.
+  structured_output: json_schema
+
+roles:
+  supervisor:
+    tier: answer
+    reasoning_effort: medium
+    description: Plans searches from the company dossier and decides when results are good enough.
+  researcher:
+    tier: research
+    reasoning_effort: low
+    description: Runs searches and source queries, and picks promising results.
+  verifier:
+    tier: research
+    reasoning_effort: medium
+    description: Reads opportunity pages, extracts the facts and checks they are real and open.
+  judge:
+    tier: answer
+    reasoning_effort: high
+    description: Scores how well a verified opportunity fits the organization, against a rubric.
+  proposal_requirements:
+    tier: answer
+    reasoning_effort: medium
+    max_tokens: 8000
+    description: Reads the call and lists what the proposal must contain and how it is judged.
+  proposal_outline:
+    tier: answer
+    reasoning_effort: medium
+    max_tokens: 6000
+    description: Plans the proposal's sections from the requirements and the company's evidence.
+  drafter:
+    tier: answer
+    reasoning_effort: medium
+    max_tokens: 8000
+    timeout_seconds: 180
+    description: Writes one proposal section from the outline and company evidence.
+  proposal_review:
+    tier: answer
+    reasoning_effort: high
+    max_tokens: 6000
+    description: Checks the draft against the requirements and lists what to fix.
+  dossier:
+    tier: answer
+    reasoning_effort: medium
+    max_tokens: 8000
+    description: Summarises the profile, preferences and documents into the company dossier.
+  preference_advisor:
+    tier: answer
+    reasoning_effort: low
+    max_tokens: 2000
+    description: Turns repeated rejection reasons into suggested excluded keywords.
+  eval_grader:
+    tier: answer
+    reasoning_effort: medium
+    max_tokens: 3000
+    description: Grades proposal drafts against a rubric in evals.
+  classifier:
+    tier: light
+    reasoning_effort: low
+    max_tokens: 1024
+    description: Cheap yes/no and labelling calls (language, spam, duplicates).
+  lead_scout:
+    tier: research
+    reasoning_effort: low
+    description: Finds relevant funder contacts for an approved opportunity.
+  emailer:
+    tier: answer
+    reasoning_effort: medium
+    description: Drafts outreach emails for a person to approve.
+  opportunity_analyst:
+    tier: answer
+    reasoning_effort: medium
+    max_tokens: 3000
+    description: Writes an executive brief for a newly found opportunity (fit, eligibility checklist, documents needed, effort, next step).
+  source_reader:
+    tier: research
+    reasoning_effort: low
+    max_tokens: 3000
+    description: Reads custom organization source pages and extracts open calls and links.
+

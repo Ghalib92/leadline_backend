@@ -1,0 +1,7 @@
+-r base.txt
+-r test.txt
+
+pre-commit>=4,<5
+# `make dev`: runs Procfile.dev
+honcho>=2,<3
+django-debug-toolbar>=6,<7

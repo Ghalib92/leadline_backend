@@ -1,0 +1,84 @@
+{% extends "common/emails/base.html" %} {% block title %} Join {{
+organization_name }} on {{ product_name }} {% endblock title %} {% block
+preheader %} {{ inviter_name }} invited you to join {{ organization_name }} as
+{{ role }}. {% endblock preheader %} {% block content %}
+
+<p
+  style="
+    margin: 0 0 8px;
+    color: #087b87;
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 1px;
+  "
+>
+  AN INVITATION TO COLLABORATE
+</p>
+<h1
+  style="margin: 0 0 20px; color: #172b4d; font-size: 28px; line-height: 35px"
+>
+  Your team is waiting.
+</h1>
+<p>
+  <strong>{{ inviter_name }}</strong> invited you to join
+  <strong>{{ organization_name }}</strong> on {{ product_name }}.
+</p>
+<table
+  role="presentation"
+  width="100%"
+  cellspacing="0"
+  cellpadding="0"
+  style="
+    background-color: #eef7f7;
+    border: 1px solid #c5e4e6;
+    border-radius: 8px;
+    font-size: 14px;
+    line-height: 22px;
+  "
+>
+  <tr>
+    <td style="padding: 16px 20px; color: #526279">
+      Your role<br /><strong style="color: #172b4d">{{ role }}</strong>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding: 0 20px 16px; color: #526279; word-break: break-all">
+      Sign in with<br /><strong style="color: #172b4d"
+        >{{ recipient_email }}</strong
+      >
+    </td>
+  </tr>
+</table>
+
+{% if message %}
+<p style="padding-left: 16px; border-left: 3px solid #0e8390; color: #526279">
+  {{ message|linebreaksbr }}
+</p>
+{% endif %} {% with button_url=accept_url button_label="Review invitation" %} {%
+include "common/emails/button.html" %} {% endwith %}
+
+<p style="font-size: 14px; color: #526279">
+  New here? Create an account with this email, verify it, then return to this
+  invitation. Opening the link does not join the organization automatically.
+</p>
+<p style="font-size: 14px; color: #526279">
+  This invitation expires on
+  <strong>{{ expires_at|date:"j M Y, H:i T" }}</strong>. Keep this link private.
+</p>
+<p style="font-size: 12px; line-height: 19px; color: #67758a">
+  If the button does not work, copy the entire link into your browser:
+</p>
+<p
+  style="
+    font-size: 12px;
+    line-height: 19px;
+    word-break: break-all;
+    overflow-wrap: anywhere;
+  "
+>
+  <a href="{{ accept_url }}" style="color: #087b87">{{ accept_url }}</a>
+</p>
+
+{% endblock content %} {% block footer %} You received this because an
+organization admin invited {{ recipient_email }}. You can ignore the invitation
+if it was unexpected. {% endblock footer %}

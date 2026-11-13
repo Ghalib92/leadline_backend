@@ -1,0 +1,21 @@
+{% autoescape off %}
+Join {{ organization_name }} on {{ product_name }}
+
+{{ inviter_name }} invited you to join {{ organization_name }}.
+Your role: {{ role }}
+Sign in with: {{ recipient_email }}
+{% if message %}
+Message from your admin:
+{{ message }}
+{% endif %}
+Review invitation:
+{{ accept_url }}
+
+New here? Create an account with this email, verify it, then return to the invitation.
+Opening the link does not join the organization automatically.
+
+Expires: {{ expires_at|date:"j M Y, H:i T" }}
+Keep this link private. If the invitation was unexpected, you can ignore it.
+
+The {{ product_name }} team
+{% endautoescape %}

@@ -1,0 +1,83 @@
+"""Export a proposal version to DOCX (Word).
+
+Section text is the simple Markdown the writer produces: paragraphs, "-" and "1."
+lists, "#" sub-headings, **bold** and *italic*. Anything else is kept as plain text.
+"""
+
+import io
+import re
+
+from docx import Document
+from docx.shared import Pt
+
+_INLINE = re.compile(r"(\*\*[^*]+\*\*|\*[^*]+\*)")
+_NUMBERED = re.compile(r"^\d+[.)]\s+")
+
+
+def proposal_docx(proposal, version) -> bytes:
+    opportunity = proposal.opportunity
+    document = Document()
+    document.styles["Normal"].font.size = Pt(11)
+    document.add_heading(opportunity.title, level=0)
+    facts = [f"Organization: {proposal.organization.name}"]
+    if opportunity.funder:
+        facts.append(f"Funder: {opportunity.funder}")
+    if opportunity.deadline:
+        facts.append(f"Deadline: {opportunity.deadline:%d %B %Y}")
+    facts.append(f"Version {version.number}")
+    document.add_paragraph(" · ".join(facts)).italic = True
+
+    sources = []
+    for section in version.sections:
+        document.add_heading(section["title"], level=1)
+        _add_markdown(document, section.get("content") or "[Not written yet]")
+        for item in section.get("evidence") or []:
+            sources.append(
+                f"{section['title']} [{item['n']}]: {item['document_title']}"
+                + (f" ({item['location']})" if item.get("location") else "")
+            )
+    if sources:
+        document.add_heading("Sources (internal, remove before submitting)", level=1)
+        for line in sources:
+            document.add_paragraph(line, style="List Bullet")
+
+    out = io.BytesIO()
+    document.save(out)
+    return out.getvalue()
+
+
+def _add_markdown(document, text):
+    pending: list[str] = []  # lines of the current paragraph
+
+    def flush():
+        if pending:
+            _add_runs(document.add_paragraph(), " ".join(pending))
+            pending.clear()
+
+    for line in text.strip().splitlines():
+        stripped = line.strip()
+        if not stripped:
+            flush()
+        elif stripped.startswith("#"):
+            flush()
+            level = min(4, len(stripped) - len(stripped.lstrip("#")) + 1)
+            document.add_heading(stripped.lstrip("#").strip(), level=level)
+        elif stripped[:2] in ("- ", "* ", "• "):
+            flush()
+            _add_runs(document.add_paragraph(style="List Bullet"), stripped[2:])
+        elif _NUMBERED.match(stripped):
+            flush()
+            _add_runs(document.add_paragraph(style="List Number"), _NUMBERED.sub("", stripped))
+        else:
+            pending.append(stripped)
+    flush()
+
+
+def _add_runs(paragraph, text):
+    for part in _INLINE.split(text):
+        if part.startswith("**") and part.endswith("**") and len(part) > 4:
+            paragraph.add_run(part[2:-2]).bold = True
+        elif part.startswith("*") and part.endswith("*") and len(part) > 2:
+            paragraph.add_run(part[1:-1]).italic = True
+        elif part:
+            paragraph.add_run(part)

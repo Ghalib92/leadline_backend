@@ -1,0 +1,12 @@
+{% autoescape off %}
+{{ organization_name }} is ready on {{ product_name }}
+
+Hi {{ recipient_name }},
+
+You created {{ organization_name }} and are now its first admin.
+You can update organization details, invite your team, assign admin roles and manage member access.
+
+Open {{ product_name }}: {{ frontend_url }}
+
+The {{ product_name }} team
+{% endautoescape %}

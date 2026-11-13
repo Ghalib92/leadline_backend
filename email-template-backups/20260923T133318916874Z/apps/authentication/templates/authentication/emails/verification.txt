@@ -1,0 +1,14 @@
+{% autoescape off %}
+Welcome to {{ product_name }}!
+
+Hi {{ recipient_name }},
+
+Enter this code on the verification screen to confirm your email address:
+
+{{ code }}
+
+It expires in {{ expiry_minutes }} minutes. Keep it private.
+If you did not create an account or change your email, you can ignore this message.
+
+The {{ product_name }} team
+{% endautoescape %}

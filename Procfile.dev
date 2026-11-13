@@ -1,0 +1,5 @@
+# Every local process in one terminal: `make dev`. Postgres must already be running.
+# Ctrl+C stops everything.
+web: python manage.py runserver
+temporal: python manage.py temporal_dev_server
+worker: python manage.py temporal_worker --wait 60

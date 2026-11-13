@@ -1,0 +1,22 @@
+# The Proposal Writer: limits for drafting one proposal.
+#
+# A draft that reaches a limit stops writing, keeps the sections it finished and
+# says which are missing, never crashes.
+version: 1
+
+budget:
+  max_searches: 30        # company-document searches (one or two per section)
+  max_pages: 1            # the call's own web page, read once for its requirements
+  max_tokens: 160000
+  max_wall_seconds: 600
+
+# Sections the outline may have. Calls usually ask for 5-8.
+max_sections: 10
+# Company-document passages given to the writer per section.
+evidence_per_section: 4
+# The call text (page or listing) sent to the requirements step is cut to this.
+max_call_chars: 15000
+# Sections written in parallel. Keep it low on Groq's free tier.
+max_concurrency: 3
+# Used when the call gives no word limit for a section.
+default_section_words: 400

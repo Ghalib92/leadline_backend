@@ -1,0 +1,10 @@
+Hello {{ name }},
+
+The deadline for "{{ title }}"{% if funder %} ({{ funder }}){% endif %} is {{ when }}: {{ deadline|date:"l j F Y" }}.
+
+Open it in {{ product_name }}: {{ opportunity_url }}
+The call: {{ source_url }}
+
+The attached calendar file adds the deadline to your calendar.
+
+You get this because you are an admin of {{ organization_name }}, or you approved this opportunity.

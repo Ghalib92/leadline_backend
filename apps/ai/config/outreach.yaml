@@ -1,0 +1,22 @@
+# Leads and outreach: limits for the lead scout and the email agent.
+version: 1
+
+lead_scout:
+  budget:
+    max_searches: 2       # one web search for the funder's contacts + one Hunter.io lookup
+    max_pages: 6          # the call's page, contact/team pages it links to, search results
+    max_tokens: 40000
+    max_wall_seconds: 180
+  max_contacts: 8
+  # Link text or URL words that point to pages listing contacts (followed on the funder's
+  # own site only, never on aggregators).
+  contact_page_words: [contact, team, staff, about, people, leadership, programme, program]
+  max_linked_pages: 3   # of those, so pages are left for the web search's results
+  max_page_chars: 8000  # per page sent to the model
+
+emailer:
+  budget:
+    max_searches: 0
+    max_pages: 0
+    max_tokens: 15000
+    max_wall_seconds: 120

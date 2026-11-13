@@ -1,0 +1,21 @@
+{% extends "common/emails/base.html" %}
+
+{% block title %}
+Verify your {{ product_name }} email
+{% endblock title %}
+
+{% block preheader %}
+Your email verification code is ready. It expires in {{ expiry_minutes }} minutes.
+{% endblock preheader %}
+
+{% block content %}
+
+<p style="margin:0 0 8px;color:#087b87;font-size:12px;font-weight:bold;letter-spacing:1px;">CONFIRM YOUR EMAIL</p>
+<h1 style="margin:0 0 20px;color:#172b4d;font-size:28px;line-height:35px;">Welcome to {{ product_name }}.</h1>
+<p>Hi {{ recipient_name }},</p>
+<p>Enter this code on the verification screen to confirm your email address.</p>
+<p style="padding:20px;background-color:#eef7f7;border:1px solid #c5e4e6;border-radius:8px;text-align:center;font-size:32px;line-height:40px;font-weight:bold;letter-spacing:6px;color:#172b4d;">{{ code }}</p>
+<p style="font-size:14px;color:#526279;">This code expires in <strong>{{ expiry_minutes }} minutes</strong>. Keep it private.</p>
+<p style="font-size:14px;color:#526279;">If you did not create an account or change your email, you can ignore this message.</p>
+
+{% endblock content %}

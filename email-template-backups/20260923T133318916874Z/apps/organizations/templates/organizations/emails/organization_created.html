@@ -1,0 +1,39 @@
+{% extends "common/emails/base.html" %} {% block title %} {{ organization_name
+}} is ready {% endblock title %} {% block preheader %} Your organization is
+ready. You are its first admin. {% endblock preheader %} {% block content %}
+
+<p
+  style="
+    margin: 0 0 8px;
+    color: #087b87;
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 1px;
+  "
+>
+  A NEW START
+</p>
+<h1
+  style="margin: 0 0 20px; color: #172b4d; font-size: 28px; line-height: 35px"
+>
+  Your organization is ready.
+</h1>
+<p>Hi {{ recipient_name }},</p>
+<p>
+  You created <strong>{{ organization_name }}</strong> on {{ product_name }} and
+  are now its first admin.
+</p>
+<p>
+  You can update the organization details, invite your team, assign admin roles
+  and manage member access.
+</p>
+
+{% with button_url=frontend_url button_label="Open Leadline" %} {% include
+"common/emails/button.html" %} {% endwith %}
+
+<p style="font-size: 14px; color: #526279">
+  Your team members will receive their own invitations. They join after signing
+  in and accepting.
+</p>
+
+{% endblock content %}

@@ -1,0 +1,97 @@
+# Discovery runs: per-run budgets, the match threshold and where agents search.
+#
+# Budgets are hard limits. A run that reaches one stops and finishes as "partial"
+# with what it has, never as a crash.
+version: 1
+
+discovery:
+  # Candidates scoring below this (0-100) are not added to the opportunity feed.
+  match_threshold: 55
+  # How thorough a run is: each depth is a set of hard limits plus the number of
+  # plan → search → read → judge rounds (a new round happens only when fewer than
+  # target_results were added and budget is left). max_searches counts search calls
+  # of any source (each Tavily search = 1 request); max_pages counts listings read by
+  # the verifier; max_tokens counts model tokens across all agents.
+  default_depth: standard
+  depths:
+    quick:
+      label: Quick
+      description: A fast first look.
+      max_searches: 6
+      max_pages: 15
+      max_tokens: 80000
+      max_wall_seconds: 240
+      max_rounds: 1
+    standard:
+      label: Standard
+      description: Balanced; the usual choice.
+      max_searches: 12
+      max_pages: 40
+      max_tokens: 200000
+      max_wall_seconds: 600
+      max_rounds: 2
+    deep:
+      label: Deep
+      description: Wider and slower; more finds.
+      max_searches: 24
+      max_pages: 80
+      max_tokens: 400000
+      max_wall_seconds: 900
+      max_rounds: 3
+  target_results: 5
+  results_per_search: 8
+  # Leads the researcher may send to the verifier per round.
+  max_leads_per_round: 15
+  # Page text sent to the verifier is cut to this many characters.
+  max_page_chars: 12000
+  # Pages read and scored in parallel. Keep it low on Groq's free tier.
+  max_concurrency: 4
+  # The organization's most similar past approve/reject decisions shown to the judge.
+  decision_memory_size: 4
+
+# Concrete sources. `adapter` names the implementation (apps/ai/tools/sources);
+# `covers` tells the supervisor what a source is good for; `enabled: false` turns
+# one off without touching code.
+sources:
+  web_search:
+    adapter: tavily
+    domain: the web
+    covers: Any country or opportunity type; calls for proposals, grants, tenders and partnerships published anywhere online.
+  news_search:
+    adapter: tavily
+    domain: news sites
+    covers: Recent announcements of funding rounds, prizes and partnership calls.
+    options: {topic: news, days: 45}
+  grants_gov:
+    adapter: grants_gov
+    domain: grants.gov
+    covers: US federal grants. Mostly for US organizations; some programmes accept international applicants.
+  world_bank:
+    adapter: world_bank
+    domain: worldbank.org
+    covers: World Bank-financed procurement in developing countries (goods, works and consulting firms); tenders and expressions of interest.
+    # Individual consultant posts are jobs for a person, not calls for organizations.
+    options: {exclude_methods: [Individual Consultant Selection]}
+  eu_funding:
+    adapter: eu_funding
+    domain: ec.europa.eu
+    covers: European Commission grants, calls for proposals and tenders (Horizon Europe, Digital Europe, Erasmus+, etc.).
+  ted_europa:
+    adapter: ted_europa
+    domain: ted.europa.eu
+    covers: European public procurement and tenders (Tenders Electronic Daily) for contracts above EU thresholds.
+
+# Source categories an agent can pick (the UI's "sources"), each a group of sources.
+source_categories:
+  web:
+    label: Open web
+    sources: [web_search]
+  grants:
+    label: Grant databases
+    sources: [grants_gov, eu_funding, web_search]
+  procurement:
+    label: Procurement portals
+    sources: [world_bank, ted_europa, web_search]
+  news:
+    label: News & announcements
+    sources: [news_search]
