@@ -6,8 +6,15 @@ from django.db.models import F, OuterRef, Subquery
 from django.utils import timezone
 
 from apps.knowledge.selectors import dossier_for
-from apps.organizations.choices import OpportunityType
-from apps.organizations.selectors import org_sources_for, preferences_for
+from apps.organizations import choices as org_choices
+from apps.organizations.choices import Goal, OpportunityType
+from apps.organizations.selectors import (
+    client_brief_for,
+    goals_in_play,
+    org_sources_for,
+    preferences_for,
+    tender_brief_for,
+)
 
 from .choices import (
     GOAL_SCOPES,
@@ -132,11 +139,62 @@ def run_outcome(run, events) -> dict:
     }
 
 
-def profile_context(organization) -> dict:
-    """The profile and preference facts a runner plans and filters with (the dossier
-    adds the rest)."""
-    preferences = preferences_for(organization)
+def _goals(organization, goal) -> list[str]:
+    """The goal of the run, or every goal the organization works on."""
+    return [goal] if goal else goals_in_play(organization)
+
+
+def _labels(choice_class, values) -> list[str]:
+    """Controlled values as the words people (and models) read."""
+    labels = dict(choice_class.choices)
+    return [labels.get(value, value) for value in values]
+
+
+def _filled(facts: dict) -> dict:
+    return {key: value for key, value in facts.items() if value not in ("", None, [], {})}
+
+
+def client_brief_context(organization) -> dict:
+    brief = client_brief_for(organization)
+    return _filled(
+        {
+            "services": [_filled(service) for service in brief.services],
+            "customer_types": _labels(org_choices.BusinessCategory, brief.customer_types),
+            "customer_keywords": brief.customer_keywords,
+            "customer_sizes": _labels(org_choices.BusinessSize, brief.customer_sizes),
+            "target_countries": brief.target_countries,
+            "target_cities": brief.target_cities,
+            "signs_they_need_us": _labels(org_choices.LeadSignal, brief.signals),
+            "notes": brief.notes,
+        }
+    )
+
+
+def tender_brief_context(organization) -> dict:
+    brief = tender_brief_for(organization)
+    return _filled(
+        {
+            "categories": _labels(org_choices.TenderCategory, brief.categories),
+            "keywords": brief.keywords,
+            "buyer_types": _labels(org_choices.BuyerType, brief.buyer_types),
+            "target_countries": brief.target_countries,
+            "currency": brief.currency,
+            "min_value": _plain(brief.min_value),
+            "max_value": _plain(brief.max_value),
+            "eligibility": _labels(org_choices.TenderEligibility, brief.eligibility),
+            "certifications": brief.certifications,
+            "capacity_notes": brief.capacity_notes,
+        }
+    )
+
+
+def profile_context(organization, goal: str | None = None) -> dict:
+    """The profile facts a runner plans and filters with (the dossier adds the rest), plus
+    the brief of the run's goal: the grant preferences, the tenders brief or the clients
+    brief. Without a goal, the briefs of every goal the organization works on."""
+    goals = _goals(organization, goal)
     facts = {
+        "goal": goal or "",
         "organization_type": organization.organization_type,
         "country": organization.country,
         "operating_countries": organization.operating_countries,
@@ -146,21 +204,33 @@ def profile_context(organization) -> dict:
         "annual_budget": organization.annual_budget,
         "year_founded": organization.year_founded,
         "description": organization.description,
-        "geographic_scopes": preferences.geographic_scopes,
-        "target_countries": preferences.target_countries,
-        "target_regions": preferences.target_regions,
-        "focus_areas": preferences.focus_areas,
-        "eligibility": preferences.eligibility,
-        "preferred_funders": preferences.preferred_funders,
-        "excluded_funders": preferences.excluded_funders,
-        "excluded_keywords": preferences.excluded_keywords,
-        "funding_currency": preferences.funding_currency,
-        "min_funding_amount": _plain(preferences.min_funding_amount),
-        "max_funding_amount": _plain(preferences.max_funding_amount),
-        "open_to_partnerships": preferences.open_to_partnerships,
-        "can_provide_cofunding": preferences.can_provide_cofunding,
     }
-    return {key: value for key, value in facts.items() if value not in ("", None, [])}
+    excluded = []
+    if Goal.GRANTS in goals:
+        preferences = preferences_for(organization)
+        facts |= {
+            "geographic_scopes": preferences.geographic_scopes,
+            "target_countries": preferences.target_countries,
+            "target_regions": preferences.target_regions,
+            "focus_areas": preferences.focus_areas,
+            "eligibility": preferences.eligibility,
+            "preferred_funders": preferences.preferred_funders,
+            "excluded_funders": preferences.excluded_funders,
+            "funding_currency": preferences.funding_currency,
+            "min_funding_amount": _plain(preferences.min_funding_amount),
+            "max_funding_amount": _plain(preferences.max_funding_amount),
+            "open_to_partnerships": preferences.open_to_partnerships,
+            "can_provide_cofunding": preferences.can_provide_cofunding,
+        }
+        excluded += preferences.excluded_keywords
+    if Goal.TENDERS in goals:
+        facts["tender_brief"] = tender_brief_context(organization)
+        excluded += tender_brief_for(organization).excluded_keywords
+    if Goal.CLIENTS in goals:
+        facts["client_brief"] = client_brief_context(organization)
+        excluded += client_brief_for(organization).excluded_keywords
+    facts["excluded_keywords"] = list(dict.fromkeys(excluded))
+    return _filled(facts)
 
 
 def _plain(value):
@@ -305,9 +375,23 @@ def run_settings_for(organization):
     return RunSettings.objects.get_or_create(organization=organization, defaults=defaults)[0]
 
 
-def search_keywords(organization) -> list[str]:
-    """Keywords for a search with no saved search: the preferences' keywords."""
-    return list(preferences_for(organization).keywords or [])
+def search_keywords(organization, goal: str | None = None) -> list[str]:
+    """The organization's keywords for a run of `goal` (or of every goal it works on):
+    the grant preferences' keywords, the tenders brief's (its categories when it has
+    none) and the clients brief's customer keywords (its customer types when none)."""
+    words = []
+    for each in _goals(organization, goal):
+        if each == Goal.GRANTS:
+            words += preferences_for(organization).keywords
+        elif each == Goal.TENDERS:
+            brief = tender_brief_for(organization)
+            words += brief.keywords or _labels(org_choices.TenderCategory, brief.categories)
+        elif each == Goal.CLIENTS:
+            brief = client_brief_for(organization)
+            words += brief.customer_keywords or _labels(
+                org_choices.BusinessCategory, brief.customer_types
+            )
+    return list(dict.fromkeys(words))
 
 
 ORG, AGENT = "organization", "agent"
@@ -379,7 +463,10 @@ def agent_scope(organization, agent=None) -> dict:
         "depth": {"value": depth or defaults.depth, "origin": AGENT if depth else ORG},
         "sources": sources,
         "opportunity_types": types,
-        "keywords": _tagged(search_keywords(organization), agent.keywords if agent else []),
+        "keywords": _tagged(
+            search_keywords(organization, agent.goal if agent else None),
+            agent.keywords if agent else [],
+        ),
         "folders": [
             {"id": f.pk, "name": f.name, "purpose": f.purpose, "origin": origin}
             for f, origin in folders

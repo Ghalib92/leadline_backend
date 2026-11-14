@@ -223,6 +223,7 @@ class OrganizationEvent(UUIDTimestampedModel):
     def __str__(self):
         return f"{self.organization_id}: {self.action}"
 
+
 class OpportunityPreferences(UUIDTimestampedModel):
     """What the organization wants to pursue: the brief for opportunity discovery."""
 
@@ -239,12 +240,8 @@ class OpportunityPreferences(UUIDTimestampedModel):
     preferred_funders = models.JSONField(default=list, blank=True)
     excluded_funders = models.JSONField(default=list, blank=True)
     eligibility = models.JSONField(default=list, blank=True)
-    min_funding_amount = models.DecimalField(
-        max_digits=14, decimal_places=2, null=True, blank=True
-    )
-    max_funding_amount = models.DecimalField(
-        max_digits=14, decimal_places=2, null=True, blank=True
-    )
+    min_funding_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    max_funding_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     funding_currency = models.CharField(max_length=3, default="USD")
     open_to_partnerships = models.BooleanField(default=True)
     can_provide_cofunding = models.BooleanField(default=False)
@@ -264,6 +261,59 @@ class OpportunityPreferences(UUIDTimestampedModel):
 
     def __str__(self):
         return f"Preferences for {self.organization_id}"
+
+
+class ClientBrief(UUIDTimestampedModel):
+    """What the organization sells and who it sells to: the brief for Clients agents."""
+
+    organization = models.OneToOneField(
+        Organization, on_delete=models.CASCADE, related_name="client_brief"
+    )
+    # What it sells: [{"name", "description", "price"}]; price is free text ("from KES 40k").
+    services = models.JSONField(default=list, blank=True)
+    customer_types = models.JSONField(default=list, blank=True)  # BusinessCategory values
+    customer_keywords = models.JSONField(default=list, blank=True)  # e.g. "boutique hotels"
+    customer_sizes = models.JSONField(default=list, blank=True)  # BusinessSize values
+    target_countries = models.JSONField(default=list, blank=True)  # ISO alpha-2 codes
+    target_cities = models.JSONField(default=list, blank=True)
+    signals = models.JSONField(default=list, blank=True)  # LeadSignal values
+    excluded_keywords = models.JSONField(default=list, blank=True)
+    notes = models.TextField(blank=True, default="")
+
+    def __str__(self):
+        return f"Clients brief for {self.organization_id}"
+
+
+class TenderBrief(UUIDTimestampedModel):
+    """What the organization bids for: the brief for Tenders agents."""
+
+    organization = models.OneToOneField(
+        Organization, on_delete=models.CASCADE, related_name="tender_brief"
+    )
+    categories = models.JSONField(default=list, blank=True)  # TenderCategory values
+    keywords = models.JSONField(default=list, blank=True)
+    excluded_keywords = models.JSONField(default=list, blank=True)
+    buyer_types = models.JSONField(default=list, blank=True)  # BuyerType values
+    target_countries = models.JSONField(default=list, blank=True)  # ISO alpha-2 codes
+    min_value = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    max_value = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    currency = models.CharField(max_length=3, default="USD")
+    eligibility = models.JSONField(default=list, blank=True)  # TenderEligibility values
+    certifications = models.JSONField(default=list, blank=True)  # e.g. "ISO 9001", "NCA 4"
+    capacity_notes = models.TextField(blank=True, default="")
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(min_value__isnull=True)
+                | models.Q(max_value__isnull=True)
+                | models.Q(min_value__lte=models.F("max_value")),
+                name="org_tender_brief_value_range",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Tenders brief for {self.organization_id}"
 
 
 class OrganizationLink(UUIDTimestampedModel):
@@ -291,9 +341,7 @@ def document_upload_to(document, filename):
 class KnowledgeFolder(UUIDTimestampedModel):
     """A named group of documents with a stated purpose, e.g. "Past proposals"."""
 
-    organization = models.ForeignKey(
-        Organization, on_delete=models.CASCADE, related_name="folders"
-    )
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="folders")
     name = models.CharField(max_length=100)
     purpose = models.CharField(max_length=300, blank=True, default="")
     created_by = models.ForeignKey(
@@ -316,9 +364,7 @@ class OrganizationDocument(UUIDTimestampedModel):
     )
     # RESTRICT: a folder with documents can't be deleted on its own, but deleting the
     # organization still removes both.
-    folder = models.ForeignKey(
-        KnowledgeFolder, on_delete=models.RESTRICT, related_name="documents"
-    )
+    folder = models.ForeignKey(KnowledgeFolder, on_delete=models.RESTRICT, related_name="documents")
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True, default="")
     category = models.CharField(
@@ -376,11 +422,8 @@ class OrgSource(UUIDTimestampedModel):
     class Meta:
         ordering = ["created_at", "id"]
         constraints = [
-            models.UniqueConstraint(
-                fields=["organization", "url"], name="org_source_unique_url"
-            ),
+            models.UniqueConstraint(fields=["organization", "url"], name="org_source_unique_url"),
         ]
 
     def __str__(self):
         return self.label or self.url
-

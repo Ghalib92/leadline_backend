@@ -26,6 +26,7 @@ from ..models import (
 from ..permissions import require_membership
 from .serializers import (
     BulkInvitationCreateSerializer,
+    ClientBriefSerializer,
     DocumentSerializer,
     DocumentUpdateSerializer,
     DocumentUploadSerializer,
@@ -46,6 +47,7 @@ from .serializers import (
     OrgSourceSerializer,
     OrgSourceWriteSerializer,
     SetupStatusSerializer,
+    TenderBriefSerializer,
 )
 
 
@@ -455,6 +457,65 @@ class OpportunityPreferencesView(OrganizationAPIView):
     put = patch
 
 
+class _BriefView(OrganizationAPIView):
+    """Read by any member, edited by admins; one per organization, created on first use."""
+
+    def brief(self, organization):  # pragma: no cover - set by subclasses
+        raise NotImplementedError
+
+    def save(self, **data):  # pragma: no cover - set by subclasses
+        raise NotImplementedError
+
+    def get(self, request, organization_id):
+        return Response(self.get_serializer(self.brief(self.get_readable_organization())).data)
+
+    def patch(self, request, organization_id):
+        organization = self.get_organization()
+        require_membership(organization=organization, user=request.user, admin=True)
+        serializer = self.get_serializer(self.brief(organization), data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        brief = self.save(
+            organization_id=organization_id, actor=request.user, **serializer.validated_data
+        )
+        return Response(self.get_serializer(brief).data)
+
+    put = patch
+
+
+@extend_schema_view(
+    get=extend_schema(tags=["Organization briefs"]),
+    put=extend_schema(tags=["Organization briefs"]),
+    patch=extend_schema(tags=["Organization briefs"]),
+)
+class ClientBriefView(_BriefView):
+    """What the organization sells and who it sells to (Clients agents)."""
+
+    serializer_class = ClientBriefSerializer
+
+    def brief(self, organization):
+        return selectors.client_brief_for(organization)
+
+    def save(self, **data):
+        return services.update_client_brief(**data)
+
+
+@extend_schema_view(
+    get=extend_schema(tags=["Organization briefs"]),
+    put=extend_schema(tags=["Organization briefs"]),
+    patch=extend_schema(tags=["Organization briefs"]),
+)
+class TenderBriefView(_BriefView):
+    """What the organization bids for (Tenders agents)."""
+
+    serializer_class = TenderBriefSerializer
+
+    def brief(self, organization):
+        return selectors.tender_brief_for(organization)
+
+    def save(self, **data):
+        return services.update_tender_brief(**data)
+
+
 @extend_schema_view(
     get=extend_schema(tags=["Organization links"]),
     post=extend_schema(tags=["Organization links"], responses={201: LinkSerializer}),
@@ -511,9 +572,7 @@ class FolderListCreateView(OrganizationAPIView, generics.ListAPIView):
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
             return KnowledgeFolder.objects.none()
-        return self.get_readable_organization().folders.annotate(
-            document_count=Count("documents")
-        )
+        return self.get_readable_organization().folders.annotate(document_count=Count("documents"))
 
     def post(self, request, organization_id):
         serializer = self.get_serializer(data=request.data)
@@ -607,7 +666,6 @@ class OrgSourceDetailView(OrganizationAPIView):
             organization_id=organization_id, source_id=source_id, actor=request.user
         )
         return Response(status=status.HTTP_204_NO_CONTENT)
-
 
 
 @extend_schema_view(

@@ -75,6 +75,16 @@ urlpatterns = [
         views.OpportunityPreferencesView.as_view(),
         name="preferences",
     ),
+    path(
+        "<shortuuid:organization_id>/client-brief/",
+        views.ClientBriefView.as_view(),
+        name="client-brief",
+    ),
+    path(
+        "<shortuuid:organization_id>/tender-brief/",
+        views.TenderBriefView.as_view(),
+        name="tender-brief",
+    ),
     path("<shortuuid:organization_id>/links/", views.LinkListCreateView.as_view(), name="links"),
     path(
         "<shortuuid:organization_id>/links/<shortuuid:link_id>/",

@@ -8,8 +8,21 @@ from rest_framework import serializers
 
 from apps.authentication.models import User
 
-from ..choices import Eligibility, GeographicScope, Goal, OpportunityType, Region
+from ..choices import (
+    BusinessCategory,
+    BusinessSize,
+    BuyerType,
+    Eligibility,
+    GeographicScope,
+    Goal,
+    LeadSignal,
+    OpportunityType,
+    Region,
+    TenderCategory,
+    TenderEligibility,
+)
 from ..models import (
+    ClientBrief,
     KnowledgeFolder,
     OpportunityPreferences,
     Organization,
@@ -19,6 +32,7 @@ from ..models import (
     OrganizationLink,
     OrganizationMembership,
     OrgSource,
+    TenderBrief,
 )
 
 LONG_TEXT = 5000
@@ -88,9 +102,7 @@ class OrganizationWriteSerializer(serializers.ModelSerializer):
     track_record = serializers.CharField(max_length=LONG_TEXT, allow_blank=True, required=False)
     past_funding = serializers.CharField(max_length=LONG_TEXT, allow_blank=True, required=False)
     sectors = tags()
-    sdgs = UniqueListField(
-        child=serializers.IntegerField(min_value=1, max_value=17), max_length=17
-    )
+    sdgs = UniqueListField(child=serializers.IntegerField(min_value=1, max_value=17), max_length=17)
     operating_countries = countries()
     languages = UniqueListField(
         child=serializers.RegexField(r"^[a-zA-Z]{2}$", max_length=2), max_length=30
@@ -178,10 +190,8 @@ class OrganizationSerializer(serializers.ModelSerializer):
 
 
 class MemberUserSerializer(serializers.ModelSerializer):
-    first_name = serializers.CharField(
-        source="profile.first_name", default="", read_only=True)
-    last_name = serializers.CharField(
-        source="profile.last_name", default="", read_only=True)
+    first_name = serializers.CharField(source="profile.first_name", default="", read_only=True)
+    last_name = serializers.CharField(source="profile.last_name", default="", read_only=True)
 
     class Meta:
         model = User
@@ -208,24 +218,19 @@ class MembershipSerializer(serializers.ModelSerializer):
 
 
 class MembershipUpdateSerializer(serializers.Serializer):
-    role = serializers.ChoiceField(
-        choices=OrganizationMembership.Role.choices, required=False)
-    status = serializers.ChoiceField(
-        choices=["active", "inactive"], required=False)
+    role = serializers.ChoiceField(choices=OrganizationMembership.Role.choices, required=False)
+    status = serializers.ChoiceField(choices=["active", "inactive"], required=False)
 
     def validate(self, attrs):
         if not attrs:
-            raise serializers.ValidationError(
-                "Provide a role or membership status.")
+            raise serializers.ValidationError("Provide a role or membership status.")
         return attrs
 
 
 class InvitationCreateSerializer(serializers.Serializer):
     email = serializers.EmailField(max_length=255)
-    role = serializers.ChoiceField(
-        choices=OrganizationMembership.Role.choices, default="member")
-    message = serializers.CharField(
-        max_length=1000, allow_blank=True, required=False, default="")
+    role = serializers.ChoiceField(choices=OrganizationMembership.Role.choices, default="member")
+    message = serializers.CharField(max_length=1000, allow_blank=True, required=False, default="")
 
     def validate_email(self, value):
         return User.objects.normalize_email(value)
@@ -297,8 +302,7 @@ class OrganizationCreatedSerializer(OrganizationSerializer):
 
 
 class InvitationPreviewSerializer(serializers.ModelSerializer):
-    organization_name = serializers.CharField(
-        source="organization.name", read_only=True)
+    organization_name = serializers.CharField(source="organization.name", read_only=True)
     invited_by_name = serializers.SerializerMethodField()
     status = serializers.ChoiceField(
         source="effective_status", choices=OrganizationInvitation.Status.choices, read_only=True
@@ -334,8 +338,7 @@ class InvitationTokenSerializer(serializers.Serializer):
 class EventSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrganizationEvent
-        fields = ["id", "organization", "actor", "action",
-                  "target_id", "metadata", "created_at"]
+        fields = ["id", "organization", "actor", "action", "target_id", "metadata", "created_at"]
         read_only_fields = fields
 
 
@@ -403,6 +406,103 @@ class OpportunityPreferencesSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class ServiceSerializer(serializers.Serializer):
+    """Something the organization sells; the price is free text ("from KES 40,000")."""
+
+    name = serializers.CharField(max_length=120)
+    description = serializers.CharField(
+        max_length=1000, allow_blank=True, required=False, default=""
+    )
+    price = serializers.CharField(max_length=120, allow_blank=True, required=False, default="")
+
+
+class ClientBriefSerializer(serializers.ModelSerializer):
+    services = ServiceSerializer(many=True, required=False, max_length=20)
+    customer_types = choices(BusinessCategory)
+    customer_keywords = tags()
+    customer_sizes = choices(BusinessSize)
+    target_countries = countries()
+    target_cities = tags()
+    signals = choices(LeadSignal)
+    excluded_keywords = tags(100)
+    notes = serializers.CharField(max_length=LONG_TEXT, allow_blank=True, required=False)
+
+    class Meta:
+        model = ClientBrief
+        fields = [
+            "services",
+            "customer_types",
+            "customer_keywords",
+            "customer_sizes",
+            "target_countries",
+            "target_cities",
+            "signals",
+            "excluded_keywords",
+            "notes",
+            "updated_at",
+        ]
+        read_only_fields = ["updated_at"]
+
+    def validate_services(self, value):
+        """One entry per name (case-insensitive); the first wins."""
+        seen, services = set(), []
+        for service in value:
+            key = service["name"].strip().casefold()
+            if key and key not in seen:
+                seen.add(key)
+                services.append({**service, "name": service["name"].strip()})
+        return services
+
+
+class TenderBriefSerializer(serializers.ModelSerializer):
+    categories = choices(TenderCategory)
+    keywords = tags(100)
+    excluded_keywords = tags(100)
+    buyer_types = choices(BuyerType)
+    target_countries = countries()
+    min_value = serializers.DecimalField(
+        max_digits=14, decimal_places=2, min_value=0, allow_null=True, required=False
+    )
+    max_value = serializers.DecimalField(
+        max_digits=14, decimal_places=2, min_value=0, allow_null=True, required=False
+    )
+    currency = serializers.RegexField(r"^[A-Za-z]{3}$", required=False)
+    eligibility = choices(TenderEligibility)
+    certifications = tags()
+    capacity_notes = serializers.CharField(max_length=LONG_TEXT, allow_blank=True, required=False)
+
+    class Meta:
+        model = TenderBrief
+        fields = [
+            "categories",
+            "keywords",
+            "excluded_keywords",
+            "buyer_types",
+            "target_countries",
+            "min_value",
+            "max_value",
+            "currency",
+            "eligibility",
+            "certifications",
+            "capacity_notes",
+            "updated_at",
+        ]
+        read_only_fields = ["updated_at"]
+
+    def validate_currency(self, value):
+        return value.upper()
+
+    def validate(self, attrs):
+        # Compare against stored values so a PATCH of one bound is still checked.
+        minimum = attrs.get("min_value", getattr(self.instance, "min_value", None))
+        maximum = attrs.get("max_value", getattr(self.instance, "max_value", None))
+        if minimum is not None and maximum is not None and minimum > maximum:
+            raise serializers.ValidationError(
+                {"max_value": "Must be greater than or equal to the minimum."}
+            )
+        return attrs
+
+
 class LinkSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrganizationLink
@@ -426,6 +526,8 @@ class FolderSerializer(serializers.ModelSerializer):
 class FolderRefSerializer(serializers.Serializer):
     id = serializers.CharField()
     name = serializers.CharField()
+
+
 class OrgSourceSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrgSource
@@ -444,7 +546,6 @@ class OrgSourceWriteSerializer(serializers.ModelSerializer):
             "enabled": {"required": False},
         }
         validators = []
-
 
 
 class DocumentSerializer(serializers.ModelSerializer):

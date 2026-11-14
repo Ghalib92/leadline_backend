@@ -150,3 +150,106 @@ class ProcessingStatus(models.TextChoices):
     # The file type, or a scanned PDF without a text layer, cannot be read yet.
     # Retrying will not help; the user can upload a PDF or DOCX instead.
     UNSUPPORTED = "unsupported", "Unsupported"
+
+
+# ---------------------------------------------------------------------------
+# Clients brief: who the organization sells to
+# ---------------------------------------------------------------------------
+
+
+class BusinessCategory(models.TextChoices):
+    """Kinds of business a Clients agent looks for (mapped to map/place categories)."""
+
+    HOSPITALITY = "hospitality", "Hotels, lodges & guest houses"
+    RESTAURANTS = "restaurants", "Restaurants, cafés & bars"
+    HEALTH = "health", "Clinics, hospitals & pharmacies"
+    EDUCATION = "education", "Schools, colleges & training centres"
+    LEGAL = "legal", "Law firms"
+    PROFESSIONAL = "professional", "Accounting & consulting firms"
+    REAL_ESTATE = "real_estate", "Real estate & property"
+    RETAIL = "retail", "Shops & supermarkets"
+    BEAUTY = "beauty", "Salons, barbers & spas"
+    FITNESS = "fitness", "Gyms & fitness"
+    AUTOMOTIVE = "automotive", "Garages & car dealers"
+    LOGISTICS = "logistics", "Transport & logistics"
+    FINANCE = "finance", "SACCOs, microfinance & insurance"
+    MANUFACTURING = "manufacturing", "Manufacturing"
+    AGRICULTURE = "agriculture", "Farms & agribusiness"
+    CONSTRUCTION = "construction", "Construction & hardware"
+    EVENTS = "events", "Event venues & planners"
+    TRAVEL = "travel", "Tour operators & travel agents"
+    NGO = "ngo", "NGOs & foundations"
+    RELIGIOUS = "religious", "Churches & religious organizations"
+    TECH = "tech", "Tech companies & startups"
+    MEDIA = "media", "Media & creative agencies"
+    OTHER = "other", "Other"
+
+
+class BusinessSize(models.TextChoices):
+    SOLO = "solo", "Sole trader"
+    SMALL = "small", "Small (2–10 people)"
+    MEDIUM = "medium", "Medium (11–50 people)"
+    LARGE = "large", "Large (more than 50)"
+
+
+class LeadSignal(models.TextChoices):
+    """Signs a business needs what the organization sells; Clients agents check for these."""
+
+    NO_WEBSITE = "no_website", "No website"
+    BROKEN_WEBSITE = "broken_website", "Website is down or broken"
+    OUTDATED_WEBSITE = "outdated_website", "Website looks outdated"
+    NOT_MOBILE_FRIENDLY = "not_mobile_friendly", "Website not mobile-friendly"
+    SLOW_WEBSITE = "slow_website", "Slow website"
+    NO_HTTPS = "no_https", "No secure (HTTPS) website"
+    SOCIAL_ONLY = "social_only", "Only on social media"
+    NO_ONLINE_BOOKING = "no_online_booking", "No online booking or ordering"
+    NO_CHATBOT = "no_chatbot", "No chat or quick replies"
+    NO_ONLINE_PAYMENTS = "no_online_payments", "No online payments"
+    MANY_REVIEWS = "many_reviews", "Busy: many reviews or followers"
+    NEW_BUSINESS = "new_business", "Recently opened"
+    HIRING = "hiring", "Hiring or growing"
+
+
+# ---------------------------------------------------------------------------
+# Tenders brief: what the organization bids for
+# ---------------------------------------------------------------------------
+
+
+class TenderCategory(models.TextChoices):
+    SOFTWARE = "software", "Software, systems & apps"
+    IT_HARDWARE = "it_hardware", "IT hardware & networks"
+    IT_SERVICES = "it_services", "IT support & managed services"
+    CONSULTANCY = "consultancy", "Consultancy & advisory"
+    MARKETING = "marketing", "Marketing, media & design"
+    TRAINING = "training", "Training & capacity building"
+    RESEARCH = "research", "Research, surveys & evaluation"
+    CONSTRUCTION = "construction", "Construction & works"
+    SUPPLIES = "supplies", "Goods & supplies"
+    MEDICAL = "medical", "Medical supplies & equipment"
+    FACILITIES = "facilities", "Cleaning, security & facilities"
+    TRANSPORT = "transport", "Transport & logistics"
+    ENERGY = "energy", "Energy & utilities"
+    AGRICULTURE = "agriculture", "Agriculture & food"
+    OTHER = "other", "Other"
+
+
+class BuyerType(models.TextChoices):
+    NATIONAL_GOVERNMENT = "national_government", "National government"
+    COUNTY_GOVERNMENT = "county_government", "County or local government"
+    PARASTATAL = "parastatal", "State corporations & parastatals"
+    INTERNATIONAL = "international", "UN, donors & international NGOs"
+    NGO = "ngo", "Local NGOs"
+    EDUCATION = "education", "Universities & schools"
+    PRIVATE = "private", "Private companies"
+
+
+class TenderEligibility(models.TextChoices):
+    """Facts that open or close tenders (Kenya's AGPO reserves 30% of public tenders)."""
+
+    AGPO_YOUTH = "agpo_youth", "AGPO: youth-owned"
+    AGPO_WOMEN = "agpo_women", "AGPO: women-owned"
+    AGPO_PWD = "agpo_pwd", "AGPO: owned by persons with disabilities"
+    LOCAL_FIRM = "local_firm", "Locally owned firm"
+    REGISTERED_SUPPLIER = "registered_supplier", "Registered government supplier"
+    TAX_COMPLIANT = "tax_compliant", "Valid tax compliance certificate"
+    INTERNATIONAL_BIDDER = "international_bidder", "Can bid on international tenders"

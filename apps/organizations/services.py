@@ -22,6 +22,7 @@ from apps.common.api.exceptions import Conflict
 
 from .emails import schedule_invitation, schedule_notification
 from .models import (
+    ClientBrief,
     KnowledgeFolder,
     OpportunityPreferences,
     Organization,
@@ -31,6 +32,7 @@ from .models import (
     OrganizationLink,
     OrganizationMembership,
     OrgSource,
+    TenderBrief,
 )
 from .permissions import require_membership
 from .signals import context_changed, document_uploaded
@@ -474,9 +476,7 @@ def respond_to_invitation(*, actor, token=None, invitation_id=None, accept=True)
         # Accepting twice (for example once from the email, again from the list) is a no-op.
         answered = _own_answered_invitation(actor=actor, **lookup)
         if answered is not None and answered.status == "accepted":
-            member = answered.organization.memberships.filter(
-                user=actor, status="active"
-            ).first()
+            member = answered.organization.memberships.filter(user=actor, status="active").first()
             if answered.accepted_by_id == actor.pk and member is not None:
                 return member
     invitation = _live_invitation(actor=actor, **lookup)
@@ -533,6 +533,42 @@ def update_preferences(*, organization_id, actor, **data):
         _event(organization, actor, "preferences.updated", metadata={"fields": sorted(changed)})
         _context_changed(organization)
     return preferences
+
+
+def _update_brief(model, action, *, organization_id, actor, data):
+    organization = _locked_organization(organization_id, actor)
+    brief, _ = model.objects.get_or_create(organization=organization)
+    changed = [field for field, value in data.items() if getattr(brief, field) != value]
+    for field in changed:
+        setattr(brief, field, data[field])
+    if changed:
+        brief.save(update_fields=[*changed, "updated_at"])
+        _event(organization, actor, action, metadata={"fields": sorted(changed)})
+    return brief
+
+
+@transaction.atomic
+def update_client_brief(*, organization_id, actor, **data):
+    """What the organization sells and who to; Clients agents read it on their next run."""
+    return _update_brief(
+        ClientBrief,
+        "client_brief.updated",
+        organization_id=organization_id,
+        actor=actor,
+        data=data,
+    )
+
+
+@transaction.atomic
+def update_tender_brief(*, organization_id, actor, **data):
+    """What the organization bids for; Tenders agents read it on their next run."""
+    return _update_brief(
+        TenderBrief,
+        "tender_brief.updated",
+        organization_id=organization_id,
+        actor=actor,
+        data=data,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -782,4 +818,3 @@ def remove_org_source(*, organization_id, source_id, actor):
         metadata={"url": source.url},
     )
     source.delete()
-

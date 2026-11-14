@@ -1,6 +1,7 @@
 from django.db.models import Count, Prefetch, Q
 from django.shortcuts import get_object_or_404
 
+from .choices import Goal
 from .models import Organization, OrganizationInvitation, OrganizationMembership
 
 
@@ -52,15 +53,60 @@ def members_for_user(*, organization, user):
         members = members.filter(status="active", user__is_active=True)
     return members
 
+
 def preferences_for(organization):
     from .models import OpportunityPreferences
 
     return OpportunityPreferences.objects.get_or_create(organization=organization)[0]
 
 
+def client_brief_for(organization):
+    from .models import ClientBrief
+
+    return ClientBrief.objects.get_or_create(organization=organization)[0]
+
+
+def tender_brief_for(organization):
+    from .models import TenderBrief
+
+    return TenderBrief.objects.get_or_create(organization=organization)[0]
+
+
+def goals_in_play(organization) -> list[str]:
+    """The goals the organization works on, in a stable order. One that never picked
+    goals keeps the grant preferences it had before goals existed."""
+    picked = organization.goals or [Goal.GRANTS]
+    return [goal.value for goal in Goal if goal in picked]
+
+
+def _brief_steps(organization):
+    """One required step per goal: the brief its agents search with."""
+    steps = []
+    for goal in goals_in_play(organization):
+        if goal == Goal.CLIENTS:
+            brief = client_brief_for(organization)
+            done = bool(brief.services and (brief.customer_types or brief.customer_keywords))
+            steps.append(("client_brief", "Say what you sell and who you sell to", True, done))
+        elif goal == Goal.TENDERS:
+            done = bool(tender_brief_for(organization).categories)
+            steps.append(("tender_brief", "Choose the kinds of tenders you bid for", True, done))
+        else:
+            preferences = preferences_for(organization)
+            done = bool(preferences.opportunity_types and preferences.geographic_scopes)
+            steps.append(
+                (
+                    "preferences",
+                    "Choose the opportunity types and geographic scope you want",
+                    True,
+                    done,
+                )
+            )
+    return steps
+
+
 def setup_status(organization):
-    """Onboarding checklist. Required steps are the minimum opportunity matching needs."""
-    preferences = preferences_for(organization)
+    """Onboarding checklist. Required steps are the minimum opportunity matching needs:
+    the basics, what the organization does, and a brief for each goal it picked."""
     has_team = (
         organization.memberships.filter(status="active").count() > 1
         or organization.invitations.filter(status="pending").exists()
@@ -78,12 +124,7 @@ def setup_status(organization):
             True,
             bool((organization.mission or organization.offerings) and organization.sectors),
         ),
-        (
-            "preferences",
-            "Choose the opportunity types and geographic scope you want",
-            True,
-            bool(preferences.opportunity_types and preferences.geographic_scopes),
-        ),
+        *_brief_steps(organization),
         ("documents", "Upload at least one document", False, organization.documents.exists()),
         (
             "links",
@@ -112,4 +153,3 @@ def org_sources_for(organization, *, enabled_only: bool = False):
     if enabled_only:
         sources = sources.filter(enabled=True)
     return sources
-

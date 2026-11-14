@@ -91,7 +91,7 @@ def _request(run) -> DiscoveryRequest:
         source_categories=run.config.get("sources", []),
         budget=run.budget,
         match_threshold=run.config.get("match_threshold", 0),
-        profile=selectors.profile_context(organization),
+        profile=selectors.profile_context(organization, run.config.get("goal") or None),
         dossier=selectors.dossier_content(organization),
         known_urls=opportunity_selectors.known_urls(organization),
         # Runs record their websites; older ones read the organization's current list.
