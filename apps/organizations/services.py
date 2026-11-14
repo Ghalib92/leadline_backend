@@ -62,8 +62,12 @@ PROFILE_FIELDS = frozenset(
         "sdgs",
         "operating_countries",
         "languages",
+        "goals",
     }
 )
+
+# Fields the AI's picture of the organization (the dossier) does not depend on.
+NOT_CONTEXT_FIELDS = frozenset({"goals"})
 
 
 def _event(organization, actor, action, *, target_id=None, metadata=None):
@@ -130,7 +134,8 @@ def update_organization(*, organization_id, actor, **data):
     if changed:
         organization.save(update_fields=[*changed, "updated_at"])
         _event(organization, actor, "organization.updated", metadata={"fields": sorted(changed)})
-        _context_changed(organization)
+        if set(changed) - NOT_CONTEXT_FIELDS:
+            _context_changed(organization)
     return organization
 
 

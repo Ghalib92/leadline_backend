@@ -45,7 +45,8 @@ def search_settings(organization, **fields):
 def make_agent(organization, owner, **overrides):
     data = {
         "name": "Education grants",
-        "opportunity_types": ["grant", "tender"],
+        "goal": "grants",
+        "opportunity_types": ["grant", "fellowship"],
         "keywords": ["data skills"],
         "sources": ["web", "grants"],
         **overrides,

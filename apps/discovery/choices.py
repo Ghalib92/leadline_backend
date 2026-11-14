@@ -4,7 +4,11 @@ Step keys, levels and decisions match the frontend's run schema
 (leadline-ui/app/lib/schema/agent-run.schema.ts).
 """
 
+from dataclasses import dataclass
+
 from django.db import models
+
+from apps.organizations.choices import Goal, OpportunityType
 
 
 class SourceCategory(models.TextChoices):
@@ -14,6 +18,40 @@ class SourceCategory(models.TextChoices):
     GRANTS = "grants", "Grant databases"
     PROCUREMENT = "procurement", "Procurement portals"
     NEWS = "news", "News & announcements"
+
+
+@dataclass(frozen=True)
+class GoalScope:
+    """What an agent with this goal may search: the opportunity types and source
+    categories that make sense for it. `runnable` is False until the goal's sources
+    exist; its agents can be set up but not run."""
+
+    description: str
+    opportunity_types: tuple[str, ...]
+    sources: tuple[str, ...]
+    runnable: bool = True
+
+
+TENDER_TYPES = (OpportunityType.TENDER, OpportunityType.RFP, OpportunityType.CONSULTANCY)
+
+GOAL_SCOPES: dict[str, GoalScope] = {
+    Goal.CLIENTS: GoalScope(
+        description="Businesses that could buy what you sell, with a reason they need it.",
+        opportunity_types=(),
+        sources=(),
+        runnable=False,  # Phase 2 adds the business sources (maps, websites, social)
+    ),
+    Goal.TENDERS: GoalScope(
+        description="Tenders, RFPs and consultancies to bid on.",
+        opportunity_types=TENDER_TYPES,
+        sources=(SourceCategory.WEB, SourceCategory.PROCUREMENT, SourceCategory.NEWS),
+    ),
+    Goal.GRANTS: GoalScope(
+        description="Grants, fellowships, awards, investment, partnerships and programmes.",
+        opportunity_types=tuple(t for t in OpportunityType.values if t not in TENDER_TYPES),
+        sources=(SourceCategory.WEB, SourceCategory.GRANTS, SourceCategory.NEWS),
+    ),
+}
 
 
 class KnowledgeMode(models.TextChoices):

@@ -8,7 +8,7 @@ from rest_framework import serializers
 
 from apps.authentication.models import User
 
-from ..choices import Eligibility, GeographicScope, OpportunityType, Region
+from ..choices import Eligibility, GeographicScope, Goal, OpportunityType, Region
 from ..models import (
     KnowledgeFolder,
     OpportunityPreferences,
@@ -95,6 +95,7 @@ class OrganizationWriteSerializer(serializers.ModelSerializer):
     languages = UniqueListField(
         child=serializers.RegexField(r"^[a-zA-Z]{2}$", max_length=2), max_length=30
     )
+    goals = UniqueListField(child=serializers.ChoiceField(choices=Goal.choices), max_length=3)
 
     class Meta:
         model = Organization
@@ -124,6 +125,7 @@ class OrganizationWriteSerializer(serializers.ModelSerializer):
             "sdgs",
             "operating_countries",
             "languages",
+            "goals",
         ]
 
     def validate_country(self, value):

@@ -46,11 +46,15 @@ def config(organization, agent, overrides=None):
 def test_the_agent_adds_its_sources_types_and_keywords_to_the_orgs(auth_client, user, organization):
     org_settings(auth_client, organization)
     agent = make_agent(
-        organization, user, sources=["news", "web"], opportunity_types=["tender"], keywords=["ai"]
+        organization,
+        user,
+        sources=["news", "web"],
+        opportunity_types=["fellowship"],
+        keywords=["ai"],
     )
     resolved = config(organization, agent)
     assert resolved["sources"] == ["web", "grants", "news"]
-    assert resolved["opportunity_types"] == ["grant", "tender"]
+    assert resolved["opportunity_types"] == ["grant", "fellowship"]
     assert resolved["keywords"] == [*selectors.search_keywords(organization), "ai"]
 
 
@@ -88,7 +92,9 @@ def test_the_agents_depth_wins_when_set(auth_client, user, organization):
 
 def test_the_request_body_still_wins(auth_client, user, organization):
     org_settings(auth_client, organization)
-    agent = make_agent(organization, user, sources=["news"], depth="deep")
+    agent = make_agent(
+        organization, user, goal="tenders", opportunity_types=[], sources=["news"], depth="deep"
+    )
     resolved = config(organization, agent, {"sources": ["procurement"], "depth": "quick"})
     assert resolved["sources"] == ["procurement"]
     assert resolved["depth"] == "quick"
@@ -272,7 +278,7 @@ def test_a_run_shows_built_in_sources_apart_from_websites_with_their_origin(
 
 @pytest.mark.django_db(transaction=True)
 def test_settings_chosen_for_one_run_say_so(auth_client, user, organization):
-    agent = make_agent(organization, user)
+    agent = make_agent(organization, user, goal="tenders", opportunity_types=[], sources=[])
     run = services.start_run(
         organization_id=organization.pk,
         agent_id=agent.pk,

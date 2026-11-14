@@ -53,6 +53,8 @@ class Organization(UUIDTimestampedModel):
     sdgs = models.JSONField(default=list, blank=True)  # UN Sustainable Development Goals, 1–17
     operating_countries = models.JSONField(default=list, blank=True)  # ISO alpha-2 codes
     languages = models.JSONField(default=list, blank=True)  # ISO 639-1 codes
+    # What it wants to find (Goal values); empty until onboarding asks.
+    goals = models.JSONField(default=list, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

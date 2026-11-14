@@ -43,6 +43,16 @@ class BudgetRange(models.TextChoices):
     OVER_5M = "over_5m", "Over $5M"
 
 
+class Goal(models.TextChoices):
+    """What an organization wants to find. The organization picks one or more; each
+    search agent has exactly one. apps.discovery.choices.GOAL_SCOPES says which
+    opportunity types and sources belong to each."""
+
+    CLIENTS = "clients", "Clients"
+    TENDERS = "tenders", "Tenders"
+    GRANTS = "grants", "Grants & funding"
+
+
 class OpportunityType(models.TextChoices):
     GRANT = "grant", "Grant"
     TENDER = "tender", "Tender / procurement"

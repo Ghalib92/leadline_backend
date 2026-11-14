@@ -2,7 +2,7 @@ from django.conf import settings
 from django.db import models
 
 from apps.common.models import UUIDTimestampedModel
-from apps.organizations.choices import OpportunityType
+from apps.organizations.choices import Goal, OpportunityType
 from apps.organizations.models import Organization
 
 from .choices import (
@@ -28,6 +28,8 @@ class SearchAgent(UUIDTimestampedModel):
     description = models.CharField(max_length=280, blank=True, default="")
     # Specific instructions / guidance for this agent's searches and scoring:
     instructions = models.TextField(blank=True, default="")
+    # What it looks for; decides which types and sources make sense (GOAL_SCOPES).
+    goal = models.CharField(max_length=10, choices=Goal.choices, default=Goal.GRANTS)
     # What this agent adds to the organization's search settings (RunSettings and the
     # preferences' keywords); the organization's own always apply as well.
     opportunity_types = models.JSONField(default=list, blank=True)  # OpportunityType values

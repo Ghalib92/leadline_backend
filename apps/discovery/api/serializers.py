@@ -1,12 +1,20 @@
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.ai.config.loader import load_sources_file
 from apps.knowledge.scope import KnowledgeScope
-from apps.organizations.choices import OpportunityType
+from apps.organizations.choices import Goal, OpportunityType
 from apps.organizations.models import OrganizationMembership
 
-from ..choices import AgentSchedule, KnowledgeMode, RunDepth, RunStatus, SourceCategory
+from ..choices import (
+    GOAL_SCOPES,
+    AgentSchedule,
+    KnowledgeMode,
+    RunDepth,
+    RunStatus,
+    SourceCategory,
+)
 from ..models import DiscoveryRun, RunCandidate, RunEvent, RunSettings, SearchAgent
 
 
@@ -40,6 +48,7 @@ class SearchAgentSerializer(serializers.ModelSerializer):
             "name",
             "description",
             "instructions",
+            "goal",
             "opportunity_types",
             "keywords",
             "sources",
@@ -108,7 +117,10 @@ class SearchAgentWriteSerializer(serializers.Serializer):
     instructions = serializers.CharField(
         max_length=2000, allow_blank=True, required=False, default=""
     )
-    # What the agent adds to the organization's search settings; all may be empty.
+    # Defaults to the organization's first goal that can run.
+    goal = serializers.ChoiceField(choices=Goal.choices, required=False)
+    # What the agent adds to the organization's search settings; all may be empty. Types
+    # and sources must belong to the goal (GOAL_SCOPES).
     opportunity_types = serializers.ListField(
         child=serializers.ChoiceField(choices=OpportunityType.choices), required=False
     )
@@ -178,9 +190,20 @@ class RunSettingsWriteSerializer(serializers.Serializer):
         return attrs
 
 
+class GoalOptionSerializer(serializers.Serializer):
+    key = serializers.ChoiceField(choices=Goal.choices)
+    label = serializers.CharField()
+    description = serializers.CharField()
+    opportunity_types = serializers.ListField(child=serializers.CharField())
+    sources = serializers.ListField(child=serializers.CharField())
+    # False: its agents can be set up, but runs arrive in a later update.
+    available = serializers.BooleanField()
+
+
 class RunSettingsSerializer(serializers.ModelSerializer):
     folders = serializers.SerializerMethodField()
     depths = serializers.SerializerMethodField()
+    goals = serializers.SerializerMethodField()
 
     class Meta:
         model = RunSettings
@@ -191,6 +214,7 @@ class RunSettingsSerializer(serializers.ModelSerializer):
             "folders",
             "knowledge_mode",
             "depths",
+            "goals",
             "updated_at",
         ]
         read_only_fields = fields
@@ -203,6 +227,21 @@ class RunSettingsSerializer(serializers.ModelSerializer):
         return [
             {"key": key, "label": depths[key].label, "description": depths[key].description}
             for key in RunDepth.values
+        ]
+
+    @extend_schema_field(GoalOptionSerializer(many=True))
+    def get_goals(self, run_settings) -> list[dict]:
+        """Every goal with the types and sources its agents use, for the agent forms."""
+        return [
+            {
+                "key": goal.value,
+                "label": goal.label,
+                "description": GOAL_SCOPES[goal].description,
+                "opportunity_types": list(GOAL_SCOPES[goal].opportunity_types),
+                "sources": list(GOAL_SCOPES[goal].sources),
+                "available": GOAL_SCOPES[goal].runnable,
+            }
+            for goal in Goal
         ]
 
 

@@ -9,7 +9,14 @@ from apps.knowledge.selectors import dossier_for
 from apps.organizations.choices import OpportunityType
 from apps.organizations.selectors import org_sources_for, preferences_for
 
-from .choices import CandidateDecision, EventLevel, RunStatus, RunStep, SkipReason
+from .choices import (
+    GOAL_SCOPES,
+    CandidateDecision,
+    EventLevel,
+    RunStatus,
+    RunStep,
+    SkipReason,
+)
 from .models import DiscoveryRun, RunEvent, RunSettings, SearchAgent
 
 EVENTS_PAGE_SIZE = 500
@@ -194,12 +201,14 @@ def schedule_slot(agent, now=None) -> str:
 
 
 def is_agent_eligible(agent, *, org_ready_cache: dict | None = None) -> bool:
-    """True when the agent can be executed on schedule: enabled, scheduled,
-    organization active and ready for matching, owner active."""
+    """True when the agent can be executed on schedule: enabled, scheduled, its goal
+    can run, organization active and ready for matching, owner active."""
     organization = agent.organization
     if organization.archived_at is not None:
         return False
     if not agent.enabled or agent.schedule not in SCHEDULE_INTERVALS:
+        return False
+    if not GOAL_SCOPES[agent.goal].runnable:
         return False
     if not agent.owner_id:
         return False
@@ -312,6 +321,40 @@ def _tagged(org_values, agent_values):
     return rows
 
 
+def search_limits(organization, agent=None) -> dict | None:
+    """The opportunity types and source categories a run may use: the agent's goal, or
+    for an organization-wide search, the runnable goals the organization picked. None
+    means no limit (an organization that has not picked goals)."""
+    if agent is not None:
+        goals = [agent.goal]
+    elif organization.goals:
+        goals = [goal for goal in organization.goals if GOAL_SCOPES[goal].runnable]
+    else:
+        return None
+    limits = {"opportunity_types": [], "sources": []}
+    for goal in goals:
+        scope = GOAL_SCOPES[goal]
+        for field, values in (
+            ("opportunity_types", scope.opportunity_types),
+            ("sources", scope.sources),
+        ):
+            limits[field] += [v for v in values if v not in limits[field]]
+    return limits
+
+
+def can_search(organization, agent=None) -> bool:
+    """Whether a run has anything to search: its goal (or one of the organization's
+    goals) has sources yet."""
+    limits = search_limits(organization, agent)
+    return limits is None or bool(limits["sources"])
+
+
+def _within(rows, allowed, origin):
+    """Keep the rows whose value is allowed; with none left, all allowed values."""
+    kept = [row for row in rows if row["value"] in allowed]
+    return kept or [{"value": value, "origin": origin} for value in allowed]
+
+
 def agent_scope(organization, agent=None) -> dict:
     """What a run of `agent` searches: the organization's search settings, plus whatever
     the agent adds. Each part says where it came from (organization or agent). With no
@@ -324,12 +367,18 @@ def agent_scope(organization, agent=None) -> dict:
         (f, AGENT) for f in agent_folders if f.pk not in org_ids
     ]
     depth = agent.depth if agent is not None and agent.depth else ""
+    sources = _tagged(defaults.sources, agent.sources if agent else [])
+    types = _tagged(defaults.opportunity_types, agent.opportunity_types if agent else [])
+    limits = search_limits(organization, agent)
+    if limits is not None:  # only what the goal uses; its defaults when nothing is left
+        origin = AGENT if agent is not None else ORG
+        sources = _within(sources, limits["sources"], origin)
+        types = _within(types, limits["opportunity_types"], origin)
     return {
+        "goal": agent.goal if agent is not None else "",
         "depth": {"value": depth or defaults.depth, "origin": AGENT if depth else ORG},
-        "sources": _tagged(defaults.sources, agent.sources if agent else []),
-        "opportunity_types": _tagged(
-            defaults.opportunity_types, agent.opportunity_types if agent else []
-        ),
+        "sources": sources,
+        "opportunity_types": types,
         "keywords": _tagged(search_keywords(organization), agent.keywords if agent else []),
         "folders": [
             {"id": f.pk, "name": f.name, "purpose": f.purpose, "origin": origin}

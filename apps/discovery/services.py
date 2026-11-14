@@ -23,6 +23,7 @@ from apps.ai.events import RunEvent as TimelineEvent
 from apps.common.api.exceptions import Conflict
 from apps.knowledge.scope import KnowledgeScope
 from apps.opportunities import services as opportunity_services
+from apps.organizations.choices import Goal
 from apps.organizations.models import OrganizationMembership
 from apps.organizations.permissions import require_membership
 from apps.organizations.selectors import setup_status
@@ -31,6 +32,7 @@ from apps.organizations.services import lock_organization, record_event
 from . import selectors
 from .choices import (
     ACTIVE_RUN_STATUSES,
+    GOAL_SCOPES,
     CandidateDecision,
     KnowledgeMode,
     RunStatus,
@@ -43,6 +45,7 @@ AGENT_FIELDS = frozenset(
         "name",
         "description",
         "instructions",
+        "goal",
         "opportunity_types",
         "keywords",
         "sources",
@@ -73,10 +76,50 @@ def _managed_agent(organization, actor, agent_id):
 # ---------------------------------------------------------------------------
 
 
+def _default_goal(organization):
+    """The organization's first goal that can run, else its first, else grants."""
+    runnable = [goal for goal in organization.goals if GOAL_SCOPES[goal].runnable]
+    return (runnable or organization.goals or [Goal.GRANTS])[0]
+
+
+def _fit_goal(organization, data, agent=None) -> dict:
+    """Keep an agent's goal, types and sources consistent (GOAL_SCOPES). A new goal must
+    be one the organization picked (when it picked any). Types and sources sent with the
+    request must belong to the goal; when only the goal changes, the agent's own types and
+    sources that don't fit are dropped."""
+    goal = data.get("goal") or (agent.goal if agent is not None else _default_goal(organization))
+    new_goal = agent is None or goal != agent.goal
+    if new_goal and organization.goals and goal not in organization.goals:
+        raise ValidationError(
+            {
+                "goal": f"Your organization isn't looking for {Goal(goal).label.lower()}. "
+                "Add it to what you want to find in Settings first."
+            }
+        )
+    scope = GOAL_SCOPES[goal]
+    for field, allowed in (
+        ("opportunity_types", scope.opportunity_types),
+        ("sources", scope.sources),
+    ):
+        if field in data:
+            outside = [value for value in data[field] if value not in allowed]
+            if outside:
+                raise ValidationError(
+                    {
+                        field: f"Not used when looking for {Goal(goal).label.lower()}: "
+                        f"{', '.join(outside)}."
+                    }
+                )
+        elif agent is not None and new_goal:
+            data[field] = [value for value in getattr(agent, field) if value in allowed]
+    return {**data, "goal": goal}
+
+
 @transaction.atomic
 def create_agent(*, organization_id, actor, folders=None, **data):
     organization = lock_organization(organization_id, actor, admin=False)
     agent_folders = resolve_folders(organization, folders or [])
+    data = _fit_goal(organization, data)
     agent = SearchAgent.objects.create(organization=organization, owner=actor, **data)
     agent.folders.set(agent_folders)
     record_event(
@@ -89,6 +132,7 @@ def create_agent(*, organization_id, actor, folders=None, **data):
 def update_agent(*, organization_id, agent_id, actor, folders=None, **data):
     organization = lock_organization(organization_id, actor, admin=False)
     agent = _managed_agent(organization, actor, agent_id)
+    data = _fit_goal(organization, data, agent)
     changed = [
         field for field in AGENT_FIELDS & data.keys() if getattr(agent, field) != data[field]
     ]
@@ -186,6 +230,11 @@ def start_search(*, organization_id, actor, overrides=None):
     """ "Search for opportunities": a run from the organization's search settings, with
     no saved search. Any member may start one. `overrides` apply to this run only."""
     organization = lock_organization(organization_id, actor, admin=False)
+    if not selectors.can_search(organization):
+        raise Conflict(
+            "Searching for what your organization wants to find arrives in the next update.",
+            code="goal_not_available",
+        )
     _check_can_start(organization)
     return _create_run(
         organization, None, actor=actor, trigger=RunTrigger.MANUAL, overrides=overrides
@@ -200,6 +249,12 @@ def start_run(*, organization_id, agent_id, actor, trigger=RunTrigger.MANUAL, ov
     agent = _managed_agent(organization, actor, agent_id)
     if not agent.enabled:
         raise Conflict("Turn this agent on before running it.", code="agent_disabled")
+    if not selectors.can_search(organization, agent):
+        raise Conflict(
+            f"Searching for {Goal(agent.goal).label.lower()} arrives in the next update. "
+            "You can set this worker up now.",
+            code="goal_not_available",
+        )
     _check_can_start(organization)
     return _create_run(organization, agent, actor=actor, trigger=trigger, overrides=overrides)
 
@@ -266,7 +321,13 @@ ORG_SEARCH_NAME = "Opportunity search"
 def _resolve_run_config(organization, agent, overrides):
     """The organization's search settings plus what the agent adds (see
     selectors.agent_scope), with the request's `overrides` (Configure this run) on top."""
-    overrides = overrides or {}
+    overrides = dict(overrides or {})
+    limits = selectors.search_limits(organization, agent)
+    if limits is not None:  # a run may narrow its goal, never leave it
+        for field in ("opportunity_types", "sources"):
+            if field in overrides:
+                allowed = limits[field]
+                overrides[field] = [v for v in overrides[field] if v in allowed] or allowed
     scope = selectors.agent_scope(organization, agent)
 
     def values(field):
@@ -283,6 +344,7 @@ def _resolve_run_config(organization, agent, overrides):
     # Only the folders the run may read; with all or no documents there are none to list.
     folders = [f for f in folders if f["id"] in knowledge.folder_ids]
     return {
+        "goal": scope["goal"],
         "depth": overrides.get("depth", scope["depth"]["value"]),
         "opportunity_types": overrides.get("opportunity_types", values("opportunity_types")),
         "keywords": values("keywords"),

@@ -96,13 +96,13 @@ def run_url(organization, agent):
 def test_a_run_uses_org_settings_plus_the_agents_additions(auth_client, user, organization):
     folder = make_folder(organization, "Contracts", purpose="Delivery proof")
     auth_client.put(url(organization), body(depth="quick", folders=[folder.pk]), format="json")
-    agent = make_agent(organization, user, sources=["news"], opportunity_types=["tender"])
+    agent = make_agent(organization, user, sources=["news"], opportunity_types=["fellowship"])
     response = auth_client.post(run_url(organization, agent), format="json")
     assert response.status_code == 202, response.data
     run = DiscoveryRun.objects.get(pk=response.data["id"])
     assert run.config["depth"] == "quick"
     assert run.config["sources"] == ["web", "news"]  # the org's, plus the agent's
-    assert run.config["opportunity_types"] == ["grant", "tender"]
+    assert run.config["opportunity_types"] == ["grant", "fellowship"]
     assert run.config["folders"] == [
         {"id": folder.pk, "name": "Contracts", "purpose": "Delivery proof"}
     ]
@@ -113,10 +113,10 @@ def test_a_run_uses_org_settings_plus_the_agents_additions(auth_client, user, or
 
 @pytest.mark.django_db(transaction=True)
 def test_the_request_body_overrides_everything(auth_client, user, organization):
-    agent = make_agent(organization, user)
+    agent = make_agent(organization, user, goal="tenders", opportunity_types=[], sources=[])
     response = auth_client.post(
         run_url(organization, agent),
-        {"depth": "deep", "sources": ["procurement"], "opportunity_types": ["grant"]},
+        {"depth": "deep", "sources": ["procurement"], "opportunity_types": ["rfp"]},
         format="json",
     )
     assert response.status_code == 202, response.data
