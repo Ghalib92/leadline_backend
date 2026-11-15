@@ -92,6 +92,7 @@ class OpportunitySerializer(serializers.ModelSerializer):
             "saved",
             "notes",
             "requirements",
+            "business",
             "brief",
             "brief_status",
             "brief_sources",
@@ -104,9 +105,12 @@ class OpportunitySerializer(serializers.ModelSerializer):
     def get_agent_name(self, opportunity) -> str | None:
         return opportunity.agent.name if opportunity.agent else None
 
-    @extend_schema_field(serializers.ChoiceField(choices=["pending", "ready", "failed"]))
+    @extend_schema_field(serializers.ChoiceField(choices=["pending", "ready", "failed", "none"]))
     def get_brief_status(self, opportunity) -> str:
-        """`pending` while the background analyst works, `failed` when it gave up."""
+        """`pending` while the background analyst works, `failed` when it gave up,
+        `none` for client leads (no opportunity brief)."""
+        if opportunity.opportunity_type == OpportunityType.CLIENT:
+            return "none"
         requirements = opportunity.requirements
         if not isinstance(requirements, dict):
             requirements = {}

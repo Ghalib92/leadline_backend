@@ -70,6 +70,8 @@ class OpportunityType(models.TextChoices):
     IN_KIND = "in_kind", "In-kind support"
     CONFERENCE = "conference", "Conference / event"
     OTHER = "other", "Other"
+    # A business that could buy what the organization sells (the Clients goal).
+    CLIENT = "client", "Client lead"
 
 
 class GeographicScope(models.TextChoices):

@@ -288,9 +288,15 @@ GROQ_API_KEY = config("GROQ_API_KEY", default="")
 # minute, so stay below that (the limit is shared through the cache).
 TAVILY_API_KEY = config("TAVILY_API_KEY", default="")
 TAVILY_REQUESTS_PER_MINUTE = config("TAVILY_REQUESTS_PER_MINUTE", cast=int, default=60)
-AI_HTTP_USER_AGENT = config(
-    "AI_HTTP_USER_AGENT", default="LeadlineBot/0.1 (+https://leadline.example.com)"
-)
+# Business directories for the Clients goal (apps/ai/tools/businesses). OpenStreetMap
+# needs no key. Google Maps through Apify scrapes Google Maps, which Google's terms do
+# not allow: it only runs when APIFY_GOOGLE_MAPS_ENABLED is on, and uses Apify credit.
+APIFY_API_TOKEN = config("APIFY_API_TOKEN", default="")
+APIFY_GOOGLE_MAPS_ENABLED = config("APIFY_GOOGLE_MAPS_ENABLED", cast=bool, default=False)
+# Identifies our requests. Add your site once you have a domain, e.g.
+# "LeadlineBot/0.1 (+https://yourdomain.com)"; OpenStreetMap refuses placeholder
+# domains such as example.com (HTTP 406).
+AI_HTTP_USER_AGENT = config("AI_HTTP_USER_AGENT", default="LeadlineBot/0.1")
 AI_HTTP_TIMEOUT_SECONDS = config("AI_HTTP_TIMEOUT_SECONDS", cast=float, default=20)
 AI_FETCH_MAX_BYTES = config("AI_FETCH_MAX_BYTES", cast=int, default=2_000_000)
 

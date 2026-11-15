@@ -51,9 +51,9 @@ def test_run_settings_list_the_goals_for_the_forms(auth_client, organization):
     assert by_key["grants"]["available"] is True
     assert by_key["clients"] == {
         **by_key["clients"],
-        "opportunity_types": [],
-        "sources": [],
-        "available": False,
+        "opportunity_types": ["client"],
+        "sources": ["businesses"],
+        "available": True,
     }
 
 
@@ -61,12 +61,14 @@ def test_run_settings_list_the_goals_for_the_forms(auth_client, organization):
 
 
 def test_a_new_agent_takes_the_organizations_first_goal_that_can_run(
-    auth_client, user, organization
+    auth_client, user, organization, monkeypatch
 ):
     set_goals(organization, user, ["clients", "tenders"])
     response = create(auth_client, organization)
     assert response.status_code == 201, response.data
-    assert response.data["goal"] == "tenders"
+    assert response.data["goal"] == "clients"
+    unavailable(monkeypatch, "clients")
+    assert create(auth_client, organization, name="Next").data["goal"] == "tenders"
 
 
 def test_without_goals_picked_an_agent_defaults_to_grants(auth_client, organization):
@@ -82,12 +84,15 @@ def test_an_agent_can_only_have_a_goal_the_organization_picked(auth_client, user
     assert create(auth_client, organization, goal="tenders").status_code == 201
 
 
-def test_a_clients_agent_can_be_set_up_before_its_search_exists(auth_client, user, organization):
+def test_a_clients_agent_searches_business_directories_for_client_leads(
+    auth_client, user, organization
+):
     set_goals(organization, user, ["clients"])
-    response = create(auth_client, organization, goal="clients", keywords=["hotels"])
+    response = create(auth_client, organization, goal="clients", keywords=["boutique hotels"])
     assert response.status_code == 201, response.data
-    assert response.data["effective"]["sources"] == []
-    assert response.data["effective"]["opportunity_types"] == []
+    effective = response.data["effective"]
+    assert [row["value"] for row in effective["sources"]] == ["businesses"]
+    assert [row["value"] for row in effective["opportunity_types"]] == ["client"]
 
 
 @pytest.mark.parametrize(
@@ -208,11 +213,33 @@ def test_without_goals_picked_an_organization_search_is_unchanged(user, organiza
     assert config["sources"] == ["web", "grants"]
 
 
-# --- Goals that cannot run yet -----------------------------------------------------------
+def test_an_organization_that_only_wants_clients_searches_for_clients(user, organization):
+    set_goals(organization, user, ["clients"])
+    config = services._resolve_run_config(organization, None, None)
+    assert config["goal"] == "clients"
+    assert config["sources"] == ["businesses"]
+    assert config["opportunity_types"] == ["client"]
+
+
+# --- Goals that cannot run yet (a goal whose sources don't exist yet) --------------------
+
+
+def unavailable(monkeypatch, goal):
+    import dataclasses
+
+    from apps.discovery import choices
+
+    scopes = dict(choices.GOAL_SCOPES)
+    scopes[goal] = dataclasses.replace(scopes[goal], runnable=False)
+    for module in (choices, selectors, services):
+        monkeypatch.setattr(module, "GOAL_SCOPES", scopes, raising=False)
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_clients_agent_cannot_run_yet(auth_client, user, organization):
+def test_an_agent_whose_goal_cannot_run_yet_is_refused(
+    auth_client, user, organization, monkeypatch
+):
+    unavailable(monkeypatch, "clients")
     agent = make_agent(organization, user, goal="clients", opportunity_types=[], sources=[])
     response = auth_client.post(url("agent-run", organization, agent_id=agent.pk), format="json")
     assert response.status_code == 409
@@ -221,7 +248,10 @@ def test_a_clients_agent_cannot_run_yet(auth_client, user, organization):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_an_organization_that_only_wants_clients_cannot_search_yet(auth_client, user, organization):
+def test_an_organization_whose_only_goal_cannot_run_yet_cannot_search(
+    auth_client, user, organization, monkeypatch
+):
+    unavailable(monkeypatch, "clients")
     set_goals(organization, user, ["clients"])
     response = auth_client.post(url("runs", organization), {}, format="json")
     assert response.status_code == 409
@@ -229,7 +259,8 @@ def test_an_organization_that_only_wants_clients_cannot_search_yet(auth_client, 
     assert not DiscoveryRun.objects.exists()
 
 
-def test_a_scheduled_clients_agent_is_skipped(user, organization):
+def test_a_scheduled_agent_whose_goal_cannot_run_yet_is_skipped(user, organization, monkeypatch):
+    unavailable(monkeypatch, "clients")
     clients = make_agent(
         organization,
         user,

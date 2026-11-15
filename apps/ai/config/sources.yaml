@@ -81,6 +81,77 @@ sources:
     domain: ted.europa.eu
     covers: European public procurement and tenders (Tenders Electronic Daily) for contracts above EU thresholds.
 
+
+  # Business directories: the Clients goal's sources. They return businesses, not
+  # listings (apps/ai/tools/businesses). Searched once per kind of customer and place.
+  google_maps:
+    adapter: apify_google_maps
+    domain: Google Maps (via Apify)
+    covers: Businesses on Google Maps with phone, website, rating and reviews. Off unless APIFY_GOOGLE_MAPS_ENABLED is on (it scrapes Google Maps and uses Apify credit).
+    options:
+      actor: compass~crawler-google-places
+      timeout_seconds: 240
+      language: en
+      # What to type into Google Maps for each kind of customer (BusinessCategory).
+      search_terms:
+        hospitality: hotels
+        restaurants: restaurants
+        health: clinics
+        education: private schools
+        legal: law firms
+        professional: accounting firms
+        real_estate: real estate agencies
+        retail: shops
+        beauty: beauty salons
+        fitness: gyms
+        automotive: car dealers
+        logistics: logistics companies
+        finance: saccos
+        manufacturing: manufacturers
+        agriculture: agribusiness
+        construction: construction companies
+        events: event venues
+        travel: tour operators
+        ngo: ngos
+        religious: churches
+        tech: software companies
+        media: media agencies
+  osm_places:
+    adapter: overpass
+    domain: OpenStreetMap
+    covers: Businesses mapped on OpenStreetMap, free in any country. Names and places are good; phone numbers and websites are often missing, so a missing website there is no evidence the business has none.
+    options:
+      geocoder: https://nominatim.openstreetmap.org/search
+      # Tried in order; public Overpass servers are often busy.
+      endpoints:
+        - https://overpass-api.de/api/interpreter
+        - https://maps.mail.ru/osm/tools/overpass/api/interpreter
+      timeout_seconds: 60
+      # OpenStreetMap tags for each kind of customer (BusinessCategory); "other" has none.
+      tags:
+        hospitality: ['"tourism"~"^(hotel|guest_house|motel|hostel|apartment)$"']
+        restaurants: ['"amenity"~"^(restaurant|cafe|bar|fast_food|pub)$"']
+        health: ['"amenity"~"^(clinic|hospital|pharmacy|dentist|doctors)$"', '"healthcare"']
+        education: ['"amenity"~"^(school|college|university|kindergarten|language_school)$"']
+        legal: ['"office"="lawyer"']
+        professional: ['"office"~"^(accountant|consulting|tax_advisor)$"']
+        real_estate: ['"office"="estate_agent"']
+        retail: ['"shop"~"^(supermarket|clothes|boutique|shoes|electronics|mobile_phone|furniture|cosmetics|department_store)$"']
+        beauty: ['"shop"~"^(hairdresser|beauty|massage)$"']
+        fitness: ['"leisure"~"^(fitness_centre|sports_centre)$"']
+        automotive: ['"shop"~"^(car|car_repair|car_parts|tyres)$"']
+        logistics: ['"office"~"^(logistics|courier|moving_company)$"']
+        finance: ['"office"~"^(financial|insurance|financial_advisor)$"', '"amenity"="bank"']
+        manufacturing: ['"man_made"="works"', '"industrial"']
+        agriculture: ['"shop"~"^(agrarian|farm)$"']
+        construction: ['"shop"~"^(hardware|doityourself|trade)$"', '"craft"~"^(builder|carpenter)$"']
+        events: ['"amenity"~"^(events_venue|conference_centre)$"']
+        travel: ['"shop"="travel_agency"', '"office"="travel_agent"']
+        ngo: ['"office"~"^(ngo|association|foundation|charity)$"']
+        religious: ['"amenity"="place_of_worship"']
+        tech: ['"office"~"^(it|telecommunication)$"']
+        media: ['"office"~"^(advertising_agency|newspaper)$"', '"craft"="photographer"']
+
 # Source categories an agent can pick (the UI's "sources"), each a group of sources.
 source_categories:
   web:
@@ -95,3 +166,15 @@ source_categories:
   news:
     label: News & announcements
     sources: [news_search]
+  businesses:
+    label: Business directories
+    sources: [google_maps, osm_places]
+
+# Client (business) searches; budgets come from the run's depth above.
+clients:
+  match_threshold: 40
+  results_per_search: 20
+  judge_batch_size: 8
+  max_candidates: 40
+  max_places: 3
+  busy_reviews: 50

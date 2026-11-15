@@ -378,7 +378,7 @@ def run_settings_for(organization):
 def search_keywords(organization, goal: str | None = None) -> list[str]:
     """The organization's keywords for a run of `goal` (or of every goal it works on):
     the grant preferences' keywords, the tenders brief's (its categories when it has
-    none) and the clients brief's customer keywords (its customer types when none)."""
+    none) and the clients brief's customer keywords."""
     words = []
     for each in _goals(organization, goal):
         if each == Goal.GRANTS:
@@ -387,11 +387,25 @@ def search_keywords(organization, goal: str | None = None) -> list[str]:
             brief = tender_brief_for(organization)
             words += brief.keywords or _labels(org_choices.TenderCategory, brief.categories)
         elif each == Goal.CLIENTS:
-            brief = client_brief_for(organization)
-            words += brief.customer_keywords or _labels(
-                org_choices.BusinessCategory, brief.customer_types
-            )
+            # Kinds of customer are searched as categories (client_search_plan).
+            words += client_brief_for(organization).customer_keywords
     return list(dict.fromkeys(words))
+
+
+def client_search_plan(organization) -> dict:
+    """What a client search looks for: the brief's kinds of customer (codes, for the
+    directories' categories), the places to search and the country. Its keywords come
+    with the run's keywords."""
+    brief = client_brief_for(organization)
+    places = brief.target_cities or ([organization.city] if organization.city else [])
+    countries = brief.target_countries or ([organization.country] if organization.country else [])
+    return {
+        "customer_types": [kind for kind in brief.customer_types if kind != "other"],
+        "places": places,
+        "country": countries[0] if countries else "",
+        # LeadSignal codes: the signs the organization wants (scored in apps.ai).
+        "signals": list(brief.signals),
+    }
 
 
 ORG, AGENT = "organization", "agent"
@@ -405,14 +419,22 @@ def _tagged(org_values, agent_values):
     return rows
 
 
+def org_search_goals(organization) -> list[str]:
+    """What "Search for opportunities" (a run with no agent) covers: the funding and
+    tender goals the organization picked. Client search is its own pipeline, so it runs
+    only when clients are all the organization looks for."""
+    picked = [goal for goal in organization.goals if GOAL_SCOPES[goal].runnable]
+    return [goal for goal in picked if goal != Goal.CLIENTS] or picked
+
+
 def search_limits(organization, agent=None) -> dict | None:
     """The opportunity types and source categories a run may use: the agent's goal, or
-    for an organization-wide search, the runnable goals the organization picked. None
-    means no limit (an organization that has not picked goals)."""
+    for an organization-wide search, org_search_goals. None means no limit (an
+    organization that has not picked goals)."""
     if agent is not None:
         goals = [agent.goal]
     elif organization.goals:
-        goals = [goal for goal in organization.goals if GOAL_SCOPES[goal].runnable]
+        goals = org_search_goals(organization)
     else:
         return None
     limits = {"opportunity_types": [], "sources": []}
@@ -426,10 +448,17 @@ def search_limits(organization, agent=None) -> dict | None:
     return limits
 
 
+def _org_search_goal(organization) -> str:
+    """The goal of an organization-wide search: clients when that is all it covers."""
+    return Goal.CLIENTS if org_search_goals(organization) == [Goal.CLIENTS] else ""
+
+
 def can_search(organization, agent=None) -> bool:
-    """Whether a run has anything to search: its goal (or one of the organization's
-    goals) has sources yet."""
-    limits = search_limits(organization, agent)
+    """Whether a run can start: the agent's goal can run (GoalScope.runnable), or for an
+    organization-wide search, one of the organization's goals can."""
+    if agent is not None:
+        return GOAL_SCOPES[agent.goal].runnable
+    limits = search_limits(organization)
     return limits is None or bool(limits["sources"])
 
 
@@ -459,7 +488,7 @@ def agent_scope(organization, agent=None) -> dict:
         sources = _within(sources, limits["sources"], origin)
         types = _within(types, limits["opportunity_types"], origin)
     return {
-        "goal": agent.goal if agent is not None else "",
+        "goal": agent.goal if agent is not None else _org_search_goal(organization),
         "depth": {"value": depth or defaults.depth, "origin": AGENT if depth else ORG},
         "sources": sources,
         "opportunity_types": types,

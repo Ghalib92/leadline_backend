@@ -10,6 +10,7 @@ from rest_framework.exceptions import ValidationError
 
 from apps.common.api.exceptions import Conflict
 from apps.common.jobs import enqueue
+from apps.organizations.choices import OpportunityType
 from apps.organizations.services import lock_organization, record_event
 
 from .choices import REVIEWABLE_STATUSES, OpportunityStatus, ReviewDecision
@@ -41,9 +42,13 @@ def add_discovered(*, run, candidate) -> tuple[Opportunity, bool]:
     Called by apps.discovery.services inside its locked transaction; runs of one
     organization never overlap, and the unique key backs that up.
     """
+    is_client = candidate.opportunity_type == OpportunityType.CLIENT
     keys = {
         "dedupe_key": url_key(str(candidate.source_url)),
-        "title_key": title_key(candidate.title, candidate.funder),
+        # A business has no funder: its name and place tell branches and namesakes apart.
+        "title_key": title_key(
+            candidate.title, candidate.location if is_client else candidate.funder
+        ),
     }
     existing = Opportunity.objects.filter(
         Q(dedupe_key=keys["dedupe_key"]) | Q(title_key=keys["title_key"]),
@@ -71,8 +76,11 @@ def add_discovered(*, run, candidate) -> tuple[Opportunity, bool]:
         match_reasons=candidate.match_reasons,
         requirements=candidate.requirements,
         verification=candidate.verification,
+        business=candidate.business,
         **keys,
     )
+    if is_client:
+        return opportunity, True  # the opportunity brief is for calls; leads get a pitch
     if not (isinstance(opportunity.requirements, dict) and "brief" in opportunity.requirements):
         from .tasks import analyze_opportunity
 
@@ -288,4 +296,3 @@ def generate_brief_for_opportunity(opportunity: Opportunity, *, force: bool = Fa
     }
     opportunity.save(update_fields=["requirements", "updated_at"])
     return brief
-

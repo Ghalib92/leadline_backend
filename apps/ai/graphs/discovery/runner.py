@@ -24,6 +24,10 @@ RECURSION_LIMIT = 60  # 8 nodes per round, max 5 rounds, with room to spare
 
 
 def run_discovery_graph(request: DiscoveryRequest, emitter, sink: DiscoverySink):
+    if request.goal == "clients":  # businesses, not listings: its own pipeline
+        from apps.ai.graphs.clients.runner import run_clients_search
+
+        return run_clients_search(request, emitter, sink)
     config = load_sources_file()
     runtime = DiscoveryRuntime(
         request=request,

@@ -97,7 +97,7 @@ def test_an_organization_without_goals_keeps_its_grant_context(briefs):
 def test_keywords_come_from_the_goals_brief(briefs):
     assert selectors.search_keywords(briefs, "grants") == ["data skills"]
     assert selectors.search_keywords(briefs, "tenders") == ["ERP"]
-    assert selectors.search_keywords(briefs, "clients") == ["Hotels, lodges & guest houses"]
+    assert selectors.search_keywords(briefs, "clients") == []  # types are searched as such
 
 
 def test_a_tenders_brief_without_keywords_searches_its_categories(user, organization):

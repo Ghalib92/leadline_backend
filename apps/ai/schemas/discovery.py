@@ -25,6 +25,8 @@ class Candidate(BaseModel):
     match_reasons: list[str] = []
     requirements: dict = {}
     verification: dict = {}
+    # A client lead's business facts (apps.ai.schemas.clients.Business.as_details()).
+    business: dict = {}
 
 
 # ---------------------------------------------------------------------------
@@ -234,4 +236,3 @@ class SourceExtraction(BaseModel):
         default_factory=list,
         description="List of open calls or opportunity links found on this page.",
     )
-

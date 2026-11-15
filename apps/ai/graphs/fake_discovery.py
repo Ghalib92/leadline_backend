@@ -62,6 +62,10 @@ def _sleep():
 def run_fake_discovery(
     request: DiscoveryRequest, emitter: RunEventEmitter, sink: DiscoverySink
 ) -> DiscoveryOutcome:
+    if request.goal == "clients":
+        from .fake_clients import run_fake_clients
+
+        return run_fake_clients(request, emitter, sink)
     rng = random.Random(request.run_id)
     budget = request.budget
     warnings = []

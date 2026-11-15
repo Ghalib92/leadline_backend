@@ -30,6 +30,9 @@ class DiscoveryRequest:
     budget: dict  # max_searches, max_pages, max_tokens, max_wall_seconds
     match_threshold: int
     instructions: str = ""
+    # What the run looks for (apps.organizations.choices.Goal); "clients" runs the
+    # business search (apps.ai.graphs.clients), anything else the opportunity search.
+    goal: str = ""
     profile: dict = field(default_factory=dict)  # profile and preference facts
     dossier: dict | None = None  # apps.ai.schemas.dossier.Dossier, when generated
     # Normalised URLs (apps.opportunities.dedupe.normalize_url) already in the feed,
@@ -41,6 +44,8 @@ class DiscoveryRequest:
     folders: list[dict] = field(default_factory=list)
     # Which company documents the AI may read (KnowledgeScope.to_config()); None = all.
     knowledge: dict | None = None
+    # Client searches: {customer_types, places, country} (selectors.client_search_plan).
+    client_search: dict = field(default_factory=dict)
 
 
 class DiscoverySink(Protocol):

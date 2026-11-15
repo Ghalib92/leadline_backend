@@ -166,6 +166,27 @@ class DiscoverySettings(BaseModel):
         return self.depths[self.default_depth].max_rounds
 
 
+class ClientsSettings(BaseModel):
+    """Client (business) searches: how many businesses each search may return and how
+    they are scored. Budgets come from the run's depth, like any discovery run."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Leads scoring below this (0-100) are not added. Lower than opportunities': a lead
+    # list is ranked for people to work through, and directory listings say little.
+    match_threshold: int = Field(default=40, ge=0, le=100)
+    results_per_search: int = Field(default=20, ge=1, le=100)
+    # Businesses scored by the client judge in one model call.
+    judge_batch_size: int = Field(default=8, ge=1, le=20)
+    # At most this many businesses are scored per run (the best-listed first).
+    max_candidates: int = Field(default=40, ge=1, le=200)
+    # Places searched per run: the brief's cities (else the profile's city), at most this
+    # many, so a long list of cities doesn't spend the whole budget on one kind of business.
+    max_places: int = Field(default=3, ge=1, le=10)
+    # A business with at least this many reviews counts as busy (signal many_reviews).
+    busy_reviews: int = Field(default=50, ge=1)
+
+
 class SourceSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -190,6 +211,7 @@ class SourcesFile(BaseModel):
     discovery: DiscoverySettings
     sources: dict[str, SourceSpec] = {}
     source_categories: dict[str, SourceCategory] = Field(min_length=1)
+    clients: ClientsSettings = ClientsSettings()
 
     @model_validator(mode="after")
     def categories_use_declared_sources(self):

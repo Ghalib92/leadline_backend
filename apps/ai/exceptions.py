@@ -12,3 +12,10 @@ class StructuredOutputError(Exception):
     def __init__(self, message, *, usage=None):
         super().__init__(message)
         self.usage = usage or {}
+
+    @property
+    def rate_limited(self) -> bool:
+        """The provider refused for its rate limit (HTTP 429), not a bad answer: trying
+        again in the same run won't help."""
+        cause = self.__cause__
+        return getattr(cause, "status_code", None) == 429 or "RateLimit" in type(cause).__name__

@@ -6,6 +6,7 @@ from django.core.checks import Error, Warning, register
 from apps.ai.config.loader import load_sources_file
 from apps.ai.exceptions import AIConfigError
 from apps.ai.graphs.discovery_runner import registered_runners
+from apps.ai.tools.businesses.registry import BUSINESS_ADAPTERS
 from apps.ai.tools.sources.registry import KNOWN_ADAPTERS
 
 
@@ -39,7 +40,7 @@ def discovery_configuration(app_configs, **kwargs):
     unknown = {
         name: spec.adapter
         for name, spec in sources.sources.items()
-        if spec.adapter not in KNOWN_ADAPTERS
+        if spec.adapter not in KNOWN_ADAPTERS | BUSINESS_ADAPTERS
     }
     if unknown:
         messages.append(
@@ -53,6 +54,23 @@ def discovery_configuration(app_configs, **kwargs):
             Warning(
                 "TAVILY_API_KEY is not set: web and news search are skipped in discovery runs.",
                 id="discovery.W002",
+            )
+        )
+    if settings.APIFY_GOOGLE_MAPS_ENABLED and not settings.APIFY_API_TOKEN:
+        messages.append(
+            Warning(
+                "APIFY_GOOGLE_MAPS_ENABLED is on but APIFY_API_TOKEN is empty: client "
+                "searches use OpenStreetMap only.",
+                id="discovery.W005",
+            )
+        )
+    if ".example." in settings.AI_HTTP_USER_AGENT or "example.com" in settings.AI_HTTP_USER_AGENT:
+        messages.append(
+            Warning(
+                "AI_HTTP_USER_AGENT names a placeholder domain; OpenStreetMap refuses it, so "
+                "client searches find nothing there.",
+                hint="Use your real domain, or just LeadlineBot/0.1.",
+                id="discovery.W006",
             )
         )
     if settings.TAVILY_REQUESTS_PER_MINUTE < 1:

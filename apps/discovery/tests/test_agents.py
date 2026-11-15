@@ -127,4 +127,10 @@ def test_archived_organizations_are_read_only(auth_client, user, organization):
 
 def test_source_categories_for_the_form(auth_client, organization):
     response = auth_client.get(url("sources", organization))
-    assert {item["value"] for item in response.data} == {"web", "grants", "procurement", "news"}
+    assert {item["value"] for item in response.data} == {
+        "web",
+        "grants",
+        "procurement",
+        "news",
+        "businesses",
+    }

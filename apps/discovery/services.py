@@ -400,8 +400,14 @@ def _origins(scope, overrides) -> dict:
 
 
 def _create_run(organization, agent, *, actor, trigger, overrides=None, schedule_slot=None):
-    discovery = load_sources_file().discovery
+    sources_file = load_sources_file()
+    discovery = sources_file.discovery
     config = _resolve_run_config(organization, agent, overrides)
+    threshold = (
+        sources_file.clients.match_threshold
+        if config["goal"] == "clients"
+        else discovery.match_threshold
+    )
     if schedule_slot:
         config["schedule_slot"] = schedule_slot
     name = agent.name if agent is not None else ORG_SEARCH_NAME
@@ -411,7 +417,7 @@ def _create_run(organization, agent, *, actor, trigger, overrides=None, schedule
         agent_name=name,
         trigger=trigger,
         triggered_by=actor,
-        config={**config, "match_threshold": discovery.match_threshold},
+        config={**config, "match_threshold": threshold},
         budget=discovery.budget_for(config["depth"]),
         runner=settings.DISCOVERY_RUNNER,
         schedule_slot=schedule_slot,

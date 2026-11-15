@@ -54,6 +54,9 @@ class Opportunity(UUIDTimestampedModel):
     # Facts the verifier extracted (requirements, documents needed, contacts…) and how.
     requirements = models.JSONField(default=dict, blank=True)
     verification = models.JSONField(default=dict, blank=True)
+    # Client leads only: the business's contact and listing facts (name, category,
+    # address, phone, website, rating, signs it needs the organization…).
+    business = models.JSONField(default=dict, blank=True)
     # Deduplication across runs (apps/opportunities/dedupe.py): the same listing,
     # by normalised URL or by title and funder, is never added twice.
     dedupe_key = models.CharField(max_length=64)

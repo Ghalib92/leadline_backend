@@ -37,6 +37,13 @@ roles:
     tier: answer
     reasoning_effort: high
     description: Scores how well a verified opportunity fits the organization, against a rubric.
+  client_judge:
+    # Listings against a brief is lighter work than judging eligibility, and the
+    # research tier has its own provider limits.
+    tier: research
+    reasoning_effort: medium
+    max_tokens: 6000
+    description: Scores a batch of businesses as client leads against the organization's clients brief.
   proposal_requirements:
     tier: answer
     reasoning_effort: medium

@@ -85,6 +85,7 @@ def _request(run) -> DiscoveryRequest:
         organization_id=organization.pk,
         organization_name=organization.name,
         agent_name=run.agent_name,
+        goal=run.config.get("goal", ""),
         instructions=run.config.get("instructions", ""),
         opportunity_types=run.config.get("opportunity_types", []),
         keywords=run.config.get("keywords", []),
@@ -98,4 +99,9 @@ def _request(run) -> DiscoveryRequest:
         org_sources=run.config.get("links") or selectors.org_sources_context(organization),
         folders=run.config.get("folders", []),
         knowledge=KnowledgeScope.of_run(run.config).to_config(),
+        client_search=(
+            selectors.client_search_plan(organization)
+            if run.config.get("goal") == "clients"
+            else {}
+        ),
     )

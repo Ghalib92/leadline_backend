@@ -18,6 +18,7 @@ class SourceCategory(models.TextChoices):
     GRANTS = "grants", "Grant databases"
     PROCUREMENT = "procurement", "Procurement portals"
     NEWS = "news", "News & announcements"
+    BUSINESSES = "businesses", "Business directories"
 
 
 @dataclass(frozen=True)
@@ -37,9 +38,8 @@ TENDER_TYPES = (OpportunityType.TENDER, OpportunityType.RFP, OpportunityType.CON
 GOAL_SCOPES: dict[str, GoalScope] = {
     Goal.CLIENTS: GoalScope(
         description="Businesses that could buy what you sell, with a reason they need it.",
-        opportunity_types=(),
-        sources=(),
-        runnable=False,  # Phase 2 adds the business sources (maps, websites, social)
+        opportunity_types=(OpportunityType.CLIENT,),
+        sources=(SourceCategory.BUSINESSES,),
     ),
     Goal.TENDERS: GoalScope(
         description="Tenders, RFPs and consultancies to bid on.",
@@ -48,7 +48,9 @@ GOAL_SCOPES: dict[str, GoalScope] = {
     ),
     Goal.GRANTS: GoalScope(
         description="Grants, fellowships, awards, investment, partnerships and programmes.",
-        opportunity_types=tuple(t for t in OpportunityType.values if t not in TENDER_TYPES),
+        opportunity_types=tuple(
+            t for t in OpportunityType.values if t not in (*TENDER_TYPES, OpportunityType.CLIENT)
+        ),
         sources=(SourceCategory.WEB, SourceCategory.GRANTS, SourceCategory.NEWS),
     ),
 }
