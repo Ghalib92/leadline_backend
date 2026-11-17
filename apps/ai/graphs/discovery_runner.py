@@ -30,6 +30,7 @@ class DiscoveryRequest:
     budget: dict  # max_searches, max_pages, max_tokens, max_wall_seconds
     match_threshold: int
     instructions: str = ""
+    depth: str = ""  # quick | standard | deep (sources.yaml); "" means the default
     # What the run looks for (apps.organizations.choices.Goal); "clients" runs the
     # business search (apps.ai.graphs.clients), anything else the opportunity search.
     goal: str = ""

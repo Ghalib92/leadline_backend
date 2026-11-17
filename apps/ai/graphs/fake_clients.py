@@ -10,8 +10,9 @@ import time
 from django.conf import settings
 
 from apps.ai.events import RunEvent, RunEventEmitter
+from apps.ai.graphs.clients.evidence import evidence
 from apps.ai.graphs.discovery_runner import DiscoveryOutcome, DiscoveryRequest, DiscoverySink
-from apps.ai.schemas.clients import Business
+from apps.ai.schemas.clients import Business, SiteCheck
 from apps.ai.schemas.discovery import Candidate
 
 NAMES = ["Savannah", "Baobab", "Kilima", "Jacaranda", "Coral", "Acacia", "Mvule", "Tausi"]
@@ -51,6 +52,7 @@ def run_fake_clients(
             for _ in range(3):
                 name = f"[Sample] {rng.choice(NAMES)} {KINDS.get(kind, 'Business')} {place}"
                 has_site = rng.random() < 0.4
+                site = f"https://example.org/{rng.randint(1, 999)}" if has_site else ""
                 businesses.append(
                     Business(
                         name=name,
@@ -61,7 +63,9 @@ def run_fake_clients(
                         city=place,
                         country=plan.get("country", ""),
                         phone=_phone(rng),
-                        website=f"https://example.org/{rng.randint(1, 999)}" if has_site else "",
+                        website=site,
+                        site=_sample_check(rng, site) if site else None,
+                        found_on={"website": "web search"} if site and rng.random() < 0.5 else {},
                         rating=round(rng.uniform(3.5, 4.9), 1),
                         reviews=rng.randint(5, 400),
                         complete_listing=True,
@@ -69,6 +73,7 @@ def run_fake_clients(
                 )
     sink.progress(sources_scanned=1, pages_read=0, usage={"searches": len(kinds) * len(places)})
     emit("read", f"{len(businesses)} distinct sample businesses")
+    emit("read", "Looking up sample websites and contacts", tool="lookup")
     emit("match", "Scoring sample businesses", tool="client_judge")
     added = 0
     for business in businesses:
@@ -88,7 +93,9 @@ def run_fake_clients(
                 match_score=score,
                 match_reasons=reasons,
                 business=business.as_details(
-                    signals=signals, pitch="Sample pitch: offer a website with online booking."
+                    signals=signals,
+                    pitch="Sample pitch: offer a website with online booking.",
+                    evidence=evidence(business, signals),
                 ),
             )
         )
@@ -99,3 +106,21 @@ def run_fake_clients(
 
 def _phone(rng) -> str:
     return f"+254 7{rng.randint(10, 99)} {rng.randint(100, 999)} {rng.randint(100, 999)}"
+
+
+def _sample_check(rng, url: str) -> SiteCheck:
+    """A made-up website check: old, insecure or slow at random."""
+    year = rng.choice([2015, 2018, 2021, 2026])
+    speed = rng.randint(20, 95)
+    return SiteCheck(
+        url=url,
+        https=rng.random() < 0.6,
+        mobile_ready=rng.random() < 0.5,
+        copyright_year=year,
+        stale=year <= 2023,
+        booking=rng.random() < 0.3,
+        chat=False,
+        payments=False,
+        mobile_speed=speed,
+        slow=speed < 50,
+    )

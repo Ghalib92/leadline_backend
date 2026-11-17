@@ -42,3 +42,57 @@ def test_the_judge_only_moves_fit():
     strict = lead_score(business, signals, 0, {"no_website"}, busy_reviews=50)
     assert generous == 40 + 25 + 14  # fit is capped at 40
     assert strict == 25 + 14
+
+
+def site(**fields):
+    from apps.ai.schemas.clients import SiteCheck
+
+    return SiteCheck(**{"url": "https://biz.ke/"} | fields)
+
+
+@pytest.mark.parametrize(
+    "fields, status, points",
+    [
+        # No website listed, and a web search found none: likely, so a bit less than sure.
+        ({"looked_up": True}, "not_found", 18),
+        # Its site was found and checked and shows nothing: no visible need.
+        (
+            {"website": "https://biz.ke", "site": site(https=True, mobile_ready=True)},
+            "listed",
+            0,
+        ),
+        # Down: as strong a sign as no website at all.
+        (
+            {"website": "https://biz.ke", "site": site(reachable=False, problem="HTTP 500")},
+            "down",
+            25,
+        ),
+        # Old and not set up for phones: the signs add up, to the cap.
+        (
+            {
+                "website": "https://biz.ke",
+                "site": site(https=False, mobile_ready=False, copyright_year=2016, stale=True),
+            },
+            "listed",
+            35,
+        ),
+    ],
+)
+def test_need_after_a_lookup(fields, status, points):
+    business = biz(**fields)
+    assert business.website_status() == status
+    signals = business.observed_signals(busy_reviews=50)
+    assert need_points(business, signals, set()) == points
+
+
+def test_a_website_found_by_search_is_marked_found():
+    business = biz(website="https://biz.ke", found_on={"website": "web search"})
+    assert business.website_status() == "found"
+
+
+def test_missing_features_count_only_when_the_brief_asks():
+    business = biz(website="https://biz.ke", site=site(booking=False, chat=False))
+    assert business.observed_signals(busy_reviews=50) == ["no_online_booking", "no_chatbot"]
+    assert business.observed_signals(busy_reviews=50, wanted={"no_chatbot", "no_website"}) == [
+        "no_chatbot"
+    ]

@@ -22,6 +22,10 @@ class UnsafeURL(Exception):
     """The URL points somewhere agents must not go."""
 
 
+class UnresolvedHost(UnsafeURL):
+    """The host name doesn't resolve: no such domain, or it has lapsed."""
+
+
 def get_http_client(*, timeout: float | None = None) -> httpx.Client:
     return httpx.Client(
         transport=transport,
@@ -43,7 +47,7 @@ def check_public_url(url: str) -> None:
     try:
         addresses = resolve_host(parts.hostname)
     except OSError as exc:
-        raise UnsafeURL(f"Could not resolve {parts.hostname}.") from exc
+        raise UnresolvedHost(f"Could not resolve {parts.hostname}.") from exc
     for address in addresses:
         ip = ipaddress.ip_address(address.split("%")[0])
         if not ip.is_global or ip.is_multicast:

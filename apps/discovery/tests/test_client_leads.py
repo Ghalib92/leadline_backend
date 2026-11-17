@@ -61,6 +61,9 @@ def test_a_clients_worker_saves_businesses_as_client_leads(auth_client, user, cl
     lead = leads.order_by("-match_score").first()
     assert lead.business["phone"]
     assert "signals" in lead.business
+    assert lead.business["website_status"] in {"listed", "found", "none"}
+    # Client runs carry the lookups in their budget (sources.yaml clients.lookup).
+    assert run.budget["max_searches"] > 12
 
     detail = auth_client.get(opportunities_url("detail", clients_org, opportunity_id=lead.pk))
     assert detail.data["business"]["source_label"] == "Sample directory"

@@ -403,10 +403,12 @@ def _create_run(organization, agent, *, actor, trigger, overrides=None, schedule
     sources_file = load_sources_file()
     discovery = sources_file.discovery
     config = _resolve_run_config(organization, agent, overrides)
-    threshold = (
-        sources_file.clients.match_threshold
-        if config["goal"] == "clients"
-        else discovery.match_threshold
+    clients = config["goal"] == "clients"
+    threshold = sources_file.clients.match_threshold if clients else discovery.match_threshold
+    budget = (
+        sources_file.clients.budget_for(config["depth"], discovery)
+        if clients
+        else discovery.budget_for(config["depth"])
     )
     if schedule_slot:
         config["schedule_slot"] = schedule_slot
@@ -418,7 +420,7 @@ def _create_run(organization, agent, *, actor, trigger, overrides=None, schedule
         trigger=trigger,
         triggered_by=actor,
         config={**config, "match_threshold": threshold},
-        budget=discovery.budget_for(config["depth"]),
+        budget=budget,
         runner=settings.DISCOVERY_RUNNER,
         schedule_slot=schedule_slot,
     )

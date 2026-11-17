@@ -18,13 +18,41 @@ from .base import FetchedPage, FetchError, PageLink
 READABLE_TYPES = ("text/html", "application/xhtml+xml", "text/plain")
 
 
+class Robots:
+    """robots.txt rules per site for our user agent, read once per site."""
+
+    def __init__(self):
+        self._parsers: dict[str, robotparser.RobotFileParser | None] = {}
+
+    def allowed(self, url: str) -> bool:
+        parts = urlsplit(url)
+        origin = f"{parts.scheme}://{parts.netloc}"
+        if origin not in self._parsers:
+            self._parsers[origin] = self._load(origin)
+        parser = self._parsers[origin]
+        return parser is None or parser.can_fetch(settings.AI_HTTP_USER_AGENT, url)
+
+    def _load(self, origin):
+        """None (allow everything) when robots.txt is missing or unreadable."""
+        try:
+            with get_http_client(timeout=10) as client:
+                response = safe_get(client, f"{origin}/robots.txt")
+        except (UnsafeURL, httpx.HTTPError):
+            return None
+        if response.status_code != 200:
+            return None
+        parser = robotparser.RobotFileParser()
+        parser.parse(response.text.splitlines())
+        return parser
+
+
 class HttpFetcher:
     def __init__(self, *, max_bytes: int | None = None):
         self.max_bytes = max_bytes or settings.AI_FETCH_MAX_BYTES
-        self._robots: dict[str, robotparser.RobotFileParser | None] = {}
+        self.robots = Robots()
 
     def fetch(self, url: str) -> FetchedPage:
-        if not self._allowed(url):
+        if not self.robots.allowed(url):
             raise FetchError("The site's robots.txt does not allow automated reading.")
         with get_http_client() as client:
             try:
@@ -52,27 +80,6 @@ class HttpFetcher:
         if content_type == "text/plain":
             return FetchedPage(url=final_url, title="", text=html.strip())
         return _extract(final_url, html)
-
-    def _allowed(self, url: str) -> bool:
-        parts = urlsplit(url)
-        origin = f"{parts.scheme}://{parts.netloc}"
-        if origin not in self._robots:
-            self._robots[origin] = self._load_robots(origin)
-        parser = self._robots[origin]
-        return parser is None or parser.can_fetch(settings.AI_HTTP_USER_AGENT, url)
-
-    def _load_robots(self, origin):
-        """None (allow everything) when robots.txt is missing or unreadable."""
-        try:
-            with get_http_client(timeout=10) as client:
-                response = safe_get(client, f"{origin}/robots.txt")
-        except (UnsafeURL, httpx.HTTPError):
-            return None
-        if response.status_code != 200:
-            return None
-        parser = robotparser.RobotFileParser()
-        parser.parse(response.text.splitlines())
-        return parser
 
 
 _EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,24}")

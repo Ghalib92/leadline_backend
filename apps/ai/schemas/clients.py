@@ -28,8 +28,70 @@ def social_kind(url: str) -> str:
     return SOCIAL_HOSTS.get(host, "")
 
 
+# Signs that a feature is missing from a website. They are noted only when the brief
+# asks for them (or names no signs at all): a law firm without online booking is not
+# evidence of anything unless booking is what the organization sells.
+FEATURE_SIGNALS = {
+    "booking": "no_online_booking",
+    "chat": "no_chatbot",
+    "payments": "no_online_payments",
+}
+
+
+class SiteCheck(BaseModel):
+    """What a business's website showed when the lead lookup read it. None means not
+    known (the page could not be read for it), never "no"."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    url: str  # the address checked, after redirects
+    reachable: bool = True
+    # Why it counts as down: "its domain no longer resolves", "it returns HTTP 500"…
+    problem: str = ""
+    # robots.txt doesn't let us read it, or the site refuses automated visitors.
+    blocked: bool = False
+    https: bool | None = None
+    certificate_error: bool = False
+    mobile_ready: bool | None = None  # a viewport set up for phones
+    copyright_year: int | None = None
+    booking: bool | None = None
+    chat: bool | None = None
+    payments: bool | None = None
+    mobile_speed: int | None = None  # Google PageSpeed mobile performance, 0–100
+    # Set by the checker from sources.yaml's thresholds (clients.lookup):
+    slow: bool = False  # mobile_speed below slow_below
+    stale: bool = False  # copyright_year at least stale_after_years old
+    checked_at: str = ""  # ISO date
+
+    @property
+    def readable(self) -> bool:
+        """It loaded and we may read it, so what it shows (or lacks) is evidence."""
+        return self.reachable and not self.blocked
+
+    def signals(self, wanted: frozenset[str] | set[str] = frozenset()) -> list[str]:
+        """The LeadSignal values this check shows (see FEATURE_SIGNALS for `wanted`)."""
+        if not self.reachable:
+            return ["broken_website"]
+        if self.blocked:
+            return []
+        checks = {
+            "no_https": self.https is False,
+            "not_mobile_friendly": self.mobile_ready is False,
+            "slow_website": self.slow,
+            "outdated_website": self.stale,
+        }
+        signals = [signal for signal, shown in checks.items() if shown]
+        signals += [
+            signal
+            for feature, signal in FEATURE_SIGNALS.items()
+            if getattr(self, feature) is False and (not wanted or signal in wanted)
+        ]
+        return signals
+
+
 class Business(BaseModel):
-    """One business as a directory lists it. Facts only, nothing inferred."""
+    """One business as a directory lists it, plus what the lead lookup found (each with
+    where it came from). Facts only, nothing inferred."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -50,6 +112,12 @@ class Business(BaseModel):
     # True when the source reliably lists a website and phone when the business has
     # them (Google Maps); False when they are often just not mapped (OpenStreetMap).
     complete_listing: bool = False
+    # Set by the lead lookup, never by a directory:
+    looked_up: bool = False  # the web was searched for its website (none was listed)
+    site: SiteCheck | None = None  # what its website showed
+    # Field ("website", "phone", "email", "instagram"…) → where the lookup found it:
+    # "web search" or "website". Fields not here came from the directory.
+    found_on: dict[str, str] = {}
 
     def normalised(self) -> "Business":
         """A website without a scheme gets https:// (directories often drop it); a
@@ -67,28 +135,55 @@ class Business(BaseModel):
     def place(self) -> str:
         return ", ".join(part for part in (self.city, self.country) if part)
 
-    def observed_signals(self, *, busy_reviews: int) -> list[str]:
-        """Signs it needs a digital service that the listing itself shows
+    def website_status(self) -> str:
+        """listed | found (by the web search) | down | none (a complete listing shows
+        none) | not_found (none listed and none found on the web) | unknown."""
+        if self.website:
+            if self.site is not None and not self.site.reachable:
+                return "down"
+            return "found" if "website" in self.found_on else "listed"
+        if self.complete_listing:
+            return "none"
+        return "not_found" if self.looked_up else "unknown"
+
+    @property
+    def checked(self) -> bool:
+        """Whether its need was looked into beyond the listing."""
+        return self.complete_listing or self.looked_up or self.site is not None
+
+    def observed_signals(
+        self, *, busy_reviews: int, wanted: frozenset[str] | set[str] = frozenset()
+    ) -> list[str]:
+        """Signs it needs a digital service that its listing and website show
         (apps.organizations.choices.LeadSignal values). Never a guess: a missing website
-        only counts when the source lists websites reliably."""
-        signals = []
+        only counts when the source lists websites reliably or a web search found none,
+        and a feature only counts as missing when its page was read."""
         if not self.website:
             if self.socials:
-                signals.append("social_only")
-            elif self.complete_listing:
-                signals.append("no_website")
-        elif self.website.startswith("http://"):
-            signals.append("no_https")
+                signals = ["social_only"]
+            elif self.complete_listing or self.looked_up:
+                signals = ["no_website"]
+            else:
+                signals = []
+        elif self.site is None:
+            signals = ["no_https"] if self.website.startswith("http://") else []
+        else:
+            signals = self.site.signals(wanted)
         if self.reviews is not None and self.reviews >= busy_reviews:
             signals.append("many_reviews")
         return signals
 
-    def as_details(self, *, signals: list[str], pitch: str = "") -> dict:
+    def as_details(
+        self, *, signals: list[str], pitch: str = "", evidence: list[dict] | None = None
+    ) -> dict:
         """What is stored on the lead (Opportunity.business)."""
         details = self.model_dump(exclude={"source_label"}, exclude_defaults=True)
         details["source_label"] = self.source_label
         details["signals"] = signals
         details["complete_listing"] = self.complete_listing
+        details["website_status"] = self.website_status()
+        if evidence:
+            details["evidence"] = evidence
         if pitch:
             details["pitch_angle"] = pitch
         return details

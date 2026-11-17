@@ -27,7 +27,8 @@ class TavilySearch:
             "search_depth": "basic",  # 1 credit; "advanced" costs 2
             "topic": options.get("topic", "general"),
             # Page text comes back with the results, so most pages need no extra fetch.
-            "include_raw_content": "text",
+            # Callers that only need titles and links pass include_raw_content=False.
+            "include_raw_content": "text" if options.get("include_raw_content", True) else False,
         }
         if body["topic"] == "news" and options.get("days"):
             body["days"] = int(options["days"])

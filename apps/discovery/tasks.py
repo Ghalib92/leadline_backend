@@ -87,6 +87,7 @@ def _request(run) -> DiscoveryRequest:
         agent_name=run.agent_name,
         goal=run.config.get("goal", ""),
         instructions=run.config.get("instructions", ""),
+        depth=run.config.get("depth", ""),
         opportunity_types=run.config.get("opportunity_types", []),
         keywords=run.config.get("keywords", []),
         source_categories=run.config.get("sources", []),

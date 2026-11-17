@@ -2,8 +2,9 @@
 
     profile  read the clients brief and plan: each kind of customer and keyword, per place
     search   ask each business directory (sources.yaml category "businesses")
-    read     merge duplicates across directories, drop ones already in the feed, and note
-             the signs each listing shows (no website, social only…)
+    read     merge duplicates across directories, drop ones already in the feed, note
+             the signs each listing shows, then look the best-listed ones up (lookup.py):
+             their website found and checked, their contacts read from it
     match    the client judge scores them in batches against the brief
     save     hand each to the sink, which dedupes and saves it as a client lead
 
@@ -25,6 +26,8 @@ from apps.ai.tools.businesses.base import BusinessQuery, SearchError, SourceOff
 from apps.ai.tools.businesses.registry import build_business_source
 from apps.opportunities.dedupe import normalize_text, normalize_url
 
+from .evidence import evidence
+from .lookup import LookupTools, look_up_leads
 from .runtime import ClientsRuntime
 from .scoring import lead_score
 
@@ -32,10 +35,15 @@ logger = logging.getLogger(__name__)
 
 
 def run_clients_search(
-    request: DiscoveryRequest, emitter, sink: DiscoverySink, *, sources: dict | None = None
+    request: DiscoveryRequest,
+    emitter,
+    sink: DiscoverySink,
+    *,
+    sources: dict | None = None,
+    lookup_tools: LookupTools | None = None,
 ) -> DiscoveryOutcome:
-    """`sources` (name → BusinessSource) replaces the configured ones, for tests and the
-    fake runner."""
+    """`sources` (name → BusinessSource) and `lookup_tools` replace the configured ones,
+    for tests."""
     config = load_sources_file()
     runtime = ClientsRuntime(
         request=request,
@@ -51,6 +59,7 @@ def run_clients_search(
             sources = _build_sources(runtime, config)
         businesses = _search(runtime, sources, queries)
         leads = _compare(runtime, businesses)
+        leads = look_up_leads(runtime, leads, tools=lookup_tools)
         scored = _judge(runtime, leads)
         _save(runtime, scored)
     except _Stop as exc:
@@ -246,8 +255,12 @@ def _compare(runtime: ClientsRuntime, businesses: list[Business]) -> list[dict]:
     if not kept:
         raise _Stop("Every business found is already in your feed.")
     busy = runtime.settings.busy_reviews
+    wanted = frozenset((runtime.request.client_search or {}).get("signals") or [])
     return [
-        {"business": business, "signals": business.observed_signals(busy_reviews=busy)}
+        {
+            "business": business,
+            "signals": business.observed_signals(busy_reviews=busy, wanted=wanted),
+        }
         for business in kept
     ]
 
@@ -257,8 +270,18 @@ def _compare(runtime: ClientsRuntime, businesses: list[Business]) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
+WEBSITE_STATUS = {
+    "listed": "has a website",
+    "found": "has a website (found in a web search)",
+    "down": "has a website, but it is down",
+    "none": "none (the directory lists websites, and has none for it)",
+    "not_found": "none listed, and none found in a web search",
+}
+
+
 def _facts(lead: dict) -> dict:
-    """What the judge sees of a business: listed facts and observed signals only."""
+    """What the judge sees of a business: listed and looked-up facts and the evidence
+    built from them, never page text."""
     business: Business = lead["business"]
     facts = business.model_dump(
         include={
@@ -269,15 +292,14 @@ def _facts(lead: dict) -> dict:
     )  # fmt: skip
     facts["complete_listing"] = business.complete_listing
     # Spelled out, so no model reads a gap into a directory that just doesn't list it.
-    if business.website:
-        facts["website_status"] = "has a website"
-    elif business.complete_listing:
-        facts["website_status"] = "none (the directory lists websites, and has none for it)"
-    else:
-        facts["website_status"] = (
-            f"unknown: {business.source_label} doesn't list it; never say it has none"
-        )
+    status = business.website_status()
+    facts["website_status"] = WEBSITE_STATUS.get(
+        status, f"unknown: {business.source_label} doesn't list it; never say it has none"
+    )
     facts["observed_signals"] = lead["signals"]
+    found = evidence(business, lead["signals"])
+    if found:
+        facts["evidence"] = [item["detail"] for item in found]
     facts["listed_on"] = business.source_label
     return facts
 
@@ -367,6 +389,7 @@ def _save(runtime: ClientsRuntime, scored: list[dict]) -> None:
 
 
 def _candidate(business: Business, signals: list[str], verdict, score: int) -> Candidate:
+    found = evidence(business, signals)
     return Candidate(
         title=business.name,
         summary=_summary(business),
@@ -376,7 +399,7 @@ def _candidate(business: Business, signals: list[str], verdict, score: int) -> C
         location=", ".join(part for part in (business.address, business.city) if part)[:200],
         match_score=score,
         match_reasons=verdict.reasons[:4],
-        business=business.as_details(signals=signals, pitch=verdict.pitch_angle),
+        business=business.as_details(signals=signals, pitch=verdict.pitch_angle, evidence=found),
     )
 
 

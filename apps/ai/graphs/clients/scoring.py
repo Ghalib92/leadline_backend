@@ -1,8 +1,9 @@
 """A lead's score: the client judge's customer fit plus what the listing itself shows.
 
     fit    0–40  the judge: the kind, size and place of business the brief targets
-    need   0–35  observed signals (no website on a complete listing, social only, no
-                 HTTPS); full weight when the brief names the sign, half otherwise
+    need   0–35  observed signals (no website, social only, a site that is down, old,
+                 insecure, slow or not set up for phones, missing features the brief
+                 asks about); full weight when the brief names the sign, half otherwise
     reach  0–25  a way to contact it and signs it is active (phone, email, rating…)
 
 Need and reach are counted here, from facts, so a lenient or a strict model moves
@@ -11,21 +12,36 @@ only the part it is asked to judge.
 
 from apps.ai.schemas.clients import Business
 
-NEED_WEIGHTS = {"no_website": 25, "social_only": 25, "no_https": 12}
-# A complete listing showing none of the signs: no visible need. An incomplete one
-# (OpenStreetMap): unknown, so a little.
-NO_SIGN_COMPLETE, NO_SIGN_UNKNOWN = 0, 8
+NEED_WEIGHTS = {
+    "no_website": 25,
+    "social_only": 25,
+    "broken_website": 25,
+    "not_mobile_friendly": 15,
+    "no_https": 12,
+    "outdated_website": 12,
+    "slow_website": 10,
+    "no_online_booking": 10,
+    "no_chatbot": 8,
+    "no_online_payments": 6,
+}
+# No website on the listing and none found by a web search: likely, not certain.
+NOT_FOUND_WEBSITE = 18
+# Checked (a complete listing, or looked up) and showing none of the signs: no visible
+# need. Not checked (an OpenStreetMap listing): unknown, so a little.
+NO_SIGN_CHECKED, NO_SIGN_UNKNOWN = 0, 8
 NEED_MAX, REACH_MAX, FIT_MAX = 35, 25, 40
 
 
 def need_points(business: Business, signals: list[str], wanted: set[str]) -> int:
-    weighted = [
-        NEED_WEIGHTS[signal] if signal in wanted or not wanted else NEED_WEIGHTS[signal] // 2
-        for signal in signals
-        if signal in NEED_WEIGHTS
-    ]
+    def weight(signal: str) -> int:
+        full = NEED_WEIGHTS[signal]
+        if signal == "no_website" and business.website_status() == "not_found":
+            full = NOT_FOUND_WEBSITE
+        return full if signal in wanted or not wanted else full // 2
+
+    weighted = [weight(signal) for signal in signals if signal in NEED_WEIGHTS]
     if not weighted:
-        return NO_SIGN_COMPLETE if business.complete_listing else NO_SIGN_UNKNOWN
+        return NO_SIGN_CHECKED if business.checked else NO_SIGN_UNKNOWN
     return min(NEED_MAX, sum(weighted))
 
 

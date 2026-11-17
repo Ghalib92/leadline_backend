@@ -178,3 +178,101 @@ clients:
   max_candidates: 40
   max_places: 3
   busy_reviews: 50
+  # Lead lookup: before scoring, the best-listed businesses are looked up so each lead
+  # shows how to reach it and why it needs you. One web search for a business with no
+  # website listed (its site and social profiles), then its website read and checked:
+  # down or a placeholder, HTTPS, set up for phones, copyright year, booking, chat and
+  # payments, and its phone, email and social links. PageSpeed (mobile speed) runs only
+  # when PAGESPEED_API_KEY is set.
+  lookup:
+    # Leads looked up per run, by depth. For client runs these lookups are added to the
+    # depth's limits: one search and pages_per_lead pages each.
+    leads: {quick: 8, standard: 20, deep: 40}
+    pages_per_lead: 2  # the home page, then the contact page when it lacks a phone or email
+    max_concurrency: 4
+    # Lookups stop when only this many seconds of the run are left, for scoring and saving.
+    reserve_seconds: 90
+    # PageSpeed mobile performance (0-100) below this counts as a slow website.
+    slow_below: 50
+    pagespeed_timeout_seconds: 60
+    # A copyright line this many years old (or older) counts as an outdated website.
+    stale_after_years: 3
+    # A link with one of these in its text or address leads to the contact page.
+    contact_page_words: [contact, reach-us, find-us, get-in-touch, location, enquir]
+    # Sites that are never a business's own website: directories, booking, review and
+    # delivery sites, maps. "booking.com" matches that domain and its subdomains,
+    # "tripadvisor." any of its country domains, and a word without a dot any host
+    # containing it.
+    not_own_site:
+      - tripadvisor.
+      - booking.com
+      - expedia.
+      - hotels.com
+      - agoda.
+      - trivago.
+      - kayak.
+      - airbnb.
+      - yelp.
+      - google.
+      - goo.gl
+      - wikipedia.org
+      - wikimedia.org
+      - linkedin.com
+      - youtube.com
+      - foursquare.com
+      - mapquest.com
+      - waze.com
+      - cybo.com
+      - businesslist.
+      - yellow.co.ke
+      - yellowpages
+      - kenyabusinessdirectory
+      - infoisinfo
+      - zoominfo.com
+      - dnb.com
+      - opencorporates.com
+      - glovoapp.com
+      - ubereats.com
+      - bolt.eu
+      - jumia.
+      - restaurantguru.com
+      - eatout.co.ke
+      - lonelyplanet.com
+      - safaribookings.com
+      - travelstart.
+      - hotels.ng
+      - trip.com
+      - momondo.
+      - skyscanner.
+      - findglocal.com
+      - waze.com
+      - wanderlog.com
+      - zomato.com
+      - rocketreach.co
+      - cbinsights.com
+      - pitchbook.com
+      - crunchbase.com
+    # Words too common in business names to recognise a website by.
+    generic_name_words:
+      [the, and, of, at, by, ltd, limited, co, company, group, international, enterprises,
+       services, africa, african, east, west, north, south, central, city, town, kenya,
+       nairobi, mombasa, kisumu, nakuru, eldoret, hotel, hotels, lodge,
+       inn, motel, hostel, resort, suites, guest, house, apartments, restaurant, cafe,
+       coffee, bar, grill, lounge, kitchen, bistro, pub, club, clinic, medical, centre,
+       center, hospital, pharmacy, chemist, school, academy, college, salon, spa, beauty,
+       barber, shop, store, supermarket, gym, fitness]
+    # Lowercase fragments of a page's HTML that show it has each feature.
+    features:
+      booking: [book now, book a room, book your stay, book a table, check availability,
+                reservation, make a booking, order online, order now, add to cart,
+                siteminder, cloudbeds, opentable, resdiary, eviivo, simplybook, calendly,
+                type="date"]
+      chat: [tawk.to, tidio, intercom, crisp.chat, drift.com, livechatinc, zopim,
+             static.zdassets.com, js.hs-scripts.com, freshchat, botpress, manychat,
+             chatbase, chatbot, landbot, voiceflow]
+      payments: [paystack, flutterwave, stripe, pesapal, ipay, dpopay, 3gdirectpay,
+                 checkout, woocommerce, shopify, mpesa express, stk push]
+    # Text that shows a placeholder instead of a website (counts as broken).
+    placeholder_words: [domain is for sale, buy this domain, domain may be for sale,
+                        coming soon, under construction, account suspended,
+                        default web site page, index of /, parked free, website is expired]

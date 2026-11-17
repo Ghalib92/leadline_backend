@@ -166,9 +166,54 @@ class DiscoverySettings(BaseModel):
         return self.depths[self.default_depth].max_rounds
 
 
+class SiteFeatures(BaseModel):
+    """Lowercase HTML fragments that show a website has each feature."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    booking: list[str] = []
+    chat: list[str] = []
+    payments: list[str] = []
+
+
+class LookupSettings(BaseModel):
+    """The lead lookup: a web search for businesses with no website listed, then their
+    website read and checked (apps.ai.graphs.clients.lookup)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Leads looked up per run, by depth (quick, standard, deep).
+    leads: dict[str, int] = {"quick": 8, "standard": 20, "deep": 40}
+    pages_per_lead: int = Field(default=2, ge=1, le=5)
+    max_concurrency: int = Field(default=4, ge=1, le=16)
+    # Lookups stop when only this much of the run's time is left, for scoring and saving.
+    reserve_seconds: int = Field(default=90, ge=0)
+    slow_below: int = Field(default=50, ge=0, le=100)
+    pagespeed_timeout_seconds: float = Field(default=60, gt=0)
+    stale_after_years: int = Field(default=3, ge=1)
+    contact_page_words: list[str] = ["contact"]
+    not_own_site: list[str] = []
+    generic_name_words: list[str] = []
+    features: SiteFeatures = SiteFeatures()
+    placeholder_words: list[str] = []
+
+    @model_validator(mode="after")
+    def every_depth_has_leads(self):
+        missing = sorted(set(DEPTHS) - set(self.leads))
+        if missing:
+            raise ValueError(f"clients.lookup.leads is missing {missing}")
+        if any(count < 0 for count in self.leads.values()):
+            raise ValueError("clients.lookup.leads must not be negative")
+        return self
+
+    def leads_for(self, depth: str) -> int:
+        return self.leads.get(depth) or self.leads["standard"]
+
+
 class ClientsSettings(BaseModel):
     """Client (business) searches: how many businesses each search may return and how
-    they are scored. Budgets come from the run's depth, like any discovery run."""
+    they are scored. Budgets come from the run's depth, like any discovery run, plus
+    the lead lookups (budget_for)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -185,6 +230,16 @@ class ClientsSettings(BaseModel):
     max_places: int = Field(default=3, ge=1, le=10)
     # A business with at least this many reviews counts as busy (signal many_reviews).
     busy_reviews: int = Field(default=50, ge=1)
+    lookup: LookupSettings = LookupSettings()
+
+    def budget_for(self, depth: str, discovery: "DiscoverySettings") -> dict:
+        """A client run's limits: the depth's, plus one search and pages_per_lead pages
+        for each lead it may look up."""
+        budget = discovery.budget_for(depth)
+        leads = self.lookup.leads_for(depth)
+        budget["max_searches"] += leads
+        budget["max_pages"] += leads * self.lookup.pages_per_lead
+        return budget
 
 
 class SourceSpec(BaseModel):

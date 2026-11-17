@@ -5,6 +5,7 @@ import json
 import pytest
 
 from apps.ai.events import ListEmitter
+from apps.ai.graphs.clients.lookup import LookupTools
 from apps.ai.graphs.clients.runner import run_clients_search
 from apps.ai.graphs.discovery_runner import DiscoveryRequest
 from apps.ai.schemas.clients import Business
@@ -68,7 +69,7 @@ def request(**overrides):
         "source_categories": ["businesses"],
         "budget": {
             "max_searches": 10,
-            "max_pages": 0,
+            "max_pages": 20,
             "max_tokens": 100_000,
             "max_wall_seconds": 120,
         },
@@ -113,9 +114,25 @@ def judge(monkeypatch, settings):
     return use_scripted_models(monkeypatch, settings, {"client_judge": scores})
 
 
-def run(req, directories):
+class NoSites:
+    """A site checker for which no website can be read (lookups change nothing)."""
+
+    def visit(self, url):
+        return None
+
+    def contacts(self, url):
+        return None
+
+
+def run(req, directories, *, tools=None):
     emitter, sink = ListEmitter(), Sink()
-    outcome = run_clients_search(req, emitter, sink, sources={d.name: d for d in directories})
+    outcome = run_clients_search(
+        req,
+        emitter,
+        sink,
+        sources={d.name: d for d in directories},
+        lookup_tools=tools or LookupTools(search=None, checker=NoSites()),
+    )
     return outcome, emitter, sink
 
 
@@ -136,7 +153,7 @@ def test_finds_scores_and_saves_client_leads(judge):
     outcome, emitter, sink = run(request(), [google, osm])
 
     assert outcome.status == "succeeded", outcome.warning
-    assert outcome.prompt_versions == {"client_judge": "client_judge/v1"}
+    assert outcome.prompt_versions == {"client_judge": "client_judge/v2"}
     # The lodge was in both directories: the complete Google listing is kept.
     names = [c.title for c in sink.saved]
     assert names == ["Savannah Lodge", "Baobab Inn"]  # best score first

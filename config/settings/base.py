@@ -293,6 +293,10 @@ TAVILY_REQUESTS_PER_MINUTE = config("TAVILY_REQUESTS_PER_MINUTE", cast=int, defa
 # not allow: it only runs when APIFY_GOOGLE_MAPS_ENABLED is on, and uses Apify credit.
 APIFY_API_TOKEN = config("APIFY_API_TOKEN", default="")
 APIFY_GOOGLE_MAPS_ENABLED = config("APIFY_GOOGLE_MAPS_ENABLED", cast=bool, default=False)
+# Google PageSpeed Insights (mobile speed of leads' websites). Free key from Google
+# Cloud (about 25,000 checks a day); without one the speed check is skipped, because
+# Google's shared keyless quota is used up.
+PAGESPEED_API_KEY = config("PAGESPEED_API_KEY", default="")
 # Identifies our requests. Add your site once you have a domain, e.g.
 # "LeadlineBot/0.1 (+https://yourdomain.com)"; OpenStreetMap refuses placeholder
 # domains such as example.com (HTTP 406).
