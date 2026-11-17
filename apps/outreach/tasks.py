@@ -1,4 +1,5 @@
-"""Background jobs: finding contacts, drafting and sending outreach, deadline reminders."""
+"""Background jobs: finding contacts, drafting and sending outreach, writing client-lead
+pitches, deadline reminders."""
 
 import logging
 from datetime import timedelta
@@ -14,8 +15,8 @@ from apps.ai.graphs.budget import Budget, BudgetExhausted
 from apps.common.jobs import job
 
 from . import selectors, services
-from .choices import EmailStatus
-from .models import OutreachEmail, ReminderLog
+from .choices import EmailStatus, PitchStatus
+from .models import LeadPitch, OutreachEmail, ReminderLog
 
 logger = logging.getLogger(__name__)
 NOT_CONFIGURED = "The AI is not configured on the server yet."
@@ -108,6 +109,48 @@ def write_email(email_id):
         body=draft.body,
         prompt_id=runtime.prompt_versions.get("emailer", ""),
         model=resolve_role("emailer").model,
+    )
+
+
+@job("outreach.write_lead_pitch")
+def write_lead_pitch(pitch_id):
+    """Write a client lead's pitch. A retry finds the same job (same start time) and
+    writes it again; a newer request or an edit in between makes it a no-op."""
+    from apps.ai.agents.pitch_writer import write_pitch
+    from apps.ai.graphs.runtime import TaskRuntime
+
+    pitch = (
+        LeadPitch.objects.select_related("opportunity", "organization")
+        .filter(pk=pitch_id, status=PitchStatus.WRITING)
+        .first()
+    )
+    if pitch is None:
+        return
+    started_at = pitch.writing_started_at
+    inputs = selectors.pitch_inputs(pitch)
+    try:
+        budget = Budget(load_outreach_file().pitch_writer.budget.model_dump())
+        runtime = TaskRuntime(budget=budget, **inputs["organization"])
+        draft = write_pitch(runtime, lead=inputs["lead"], instructions=pitch.instructions)
+    except AIConfigError as exc:
+        logger.error("Pitch %s cannot be written: %s", pitch_id, exc)
+        services.fail_pitch(pitch_id, started_at, NOT_CONFIGURED)
+        return
+    except (StructuredOutputError, BudgetExhausted):
+        services.fail_pitch(
+            pitch_id, started_at, "The AI could not write this pitch. Try again or write it."
+        )
+        return
+    except Exception:
+        logger.exception("Pitch %s failed", pitch_id)
+        services.fail_pitch(pitch_id, started_at, "Writing the pitch failed unexpectedly.")
+        return
+    services.save_written_pitch(
+        pitch_id,
+        started_at,
+        draft,
+        prompt_id=runtime.prompt_versions.get("pitch_writer", ""),
+        model=resolve_role("pitch_writer").model,
     )
 
 

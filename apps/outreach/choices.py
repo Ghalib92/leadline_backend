@@ -37,3 +37,48 @@ class EmailStatus(models.TextChoices):
 
 
 EDITABLE_EMAIL_STATUSES = (EmailStatus.DRAFT, EmailStatus.FAILED)
+
+
+# ---------------------------------------------------------------------------
+# Client leads: pitches and the call list
+# ---------------------------------------------------------------------------
+
+
+class PitchStatus(models.TextChoices):
+    WRITING = "writing", "AI is writing"
+    READY = "ready", "Ready"
+    FAILED = "failed", "Failed"
+
+
+class LeadChannel(models.TextChoices):
+    """How a person reached (or tried to reach) a business."""
+
+    CALL = "call", "Phone call"
+    WHATSAPP = "whatsapp", "WhatsApp"
+    EMAIL = "email", "Email"
+    VISIT = "visit", "Visit"
+    OTHER = "other", "Other"
+
+
+class LeadOutcome(models.TextChoices):
+    """What came of it. Kept about the conversation, so the call list can sort by it."""
+
+    NO_ANSWER = "no_answer", "No answer"
+    CALL_BACK = "call_back", "Asked us to call back"
+    MESSAGE_SENT = "message_sent", "Message sent, waiting"
+    TALKED = "talked", "Talked, not decided"
+    INTERESTED = "interested", "Interested"
+    MEETING = "meeting", "Meeting booked"
+    NOT_INTERESTED = "not_interested", "Not interested"
+    WRONG_CONTACT = "wrong_contact", "Wrong number or contact"
+
+
+# Outcomes after which nobody needs to reach the business again.
+CLOSED_OUTCOMES = (LeadOutcome.NOT_INTERESTED, LeadOutcome.WRONG_CONTACT)
+
+
+class CallListView(models.TextChoices):
+    TO_CONTACT = "to_contact", "To contact"  # approved, never reached out to
+    FOLLOW_UP = "follow_up", "Follow up"  # reached out, not closed
+    CLOSED = "closed", "Closed"  # not interested or wrong contact
+    ALL = "all", "All"

@@ -1,9 +1,10 @@
-"""Writes for leads, outreach and deadline reminders.
+"""Writes for leads, outreach, client-lead pitches, the call list and deadline reminders.
 
 Nothing is sent to a funder without a person: members draft and edit emails, and only
 an admin's explicit approval sends one. Contacts marked do-not-contact are never
 emailed. Workers (no caller) claim their job by a status change under a row lock, so
-an email is sent at most once.
+an email is sent at most once. Client-lead pitches are never sent from here at all:
+a person sends them from their own phone or email, then logs what happened.
 """
 
 from datetime import timedelta
@@ -12,20 +13,32 @@ from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from apps.common.api.exceptions import Conflict
 from apps.common.jobs import enqueue
 from apps.opportunities.choices import OpportunityStatus
+from apps.organizations.choices import OpportunityType
+from apps.organizations.models import OrganizationMembership
+from apps.organizations.permissions import require_membership
 from apps.organizations.services import lock_organization, record_event
 
 from .choices import (
+    CLOSED_OUTCOMES,
     EDITABLE_EMAIL_STATUSES,
     ContactSource,
     EmailStatus,
+    PitchStatus,
     SearchStatus,
 )
-from .models import Contact, ContactSearch, OutreachEmail, ReminderPreference
+from .models import (
+    Contact,
+    ContactSearch,
+    LeadActivity,
+    LeadPitch,
+    OutreachEmail,
+    ReminderPreference,
+)
 
 # Contacts and outreach are for opportunities the organization is going for.
 ACTIVE_STATUSES = (OpportunityStatus.PURSUING, OpportunityStatus.SUBMITTED)
@@ -417,3 +430,167 @@ def set_reminder_preference(*, organization_id, actor, **data) -> ReminderPrefer
             setattr(preference, field, data[field])
     preference.save()
     return preference
+
+
+# ---------------------------------------------------------------------------
+# Client leads: pitches and what came of reaching out
+# ---------------------------------------------------------------------------
+
+# A lead approved at some point: still being worked, or already won or lost.
+WORKED_LEAD_STATUSES = (*ACTIVE_STATUSES, OpportunityStatus.WON, OpportunityStatus.LOST)
+PITCH_FIELDS = frozenset({"whatsapp", "email_subject", "email_body", "call_points"})
+
+
+def _client_lead(organization, opportunity_id):
+    opportunity = get_object_or_404(organization.opportunities, pk=opportunity_id)
+    if opportunity.opportunity_type != OpportunityType.CLIENT:
+        raise Conflict("Pitches and the call list are for client leads.", code="not_a_lead")
+    if opportunity.status not in WORKED_LEAD_STATUSES:
+        raise Conflict("Approve the lead first.", code="not_approved")
+    return opportunity
+
+
+def _queue_pitch(pitch, *, actor, instructions=""):
+    from .tasks import write_lead_pitch
+
+    pitch.status, pitch.error = PitchStatus.WRITING, ""
+    pitch.instructions = instructions.strip()
+    pitch.requested_by = actor
+    pitch.writing_started_at = timezone.now()
+    pitch.save()
+    enqueue(write_lead_pitch, pitch.pk)
+
+
+@transaction.atomic
+def write_pitch(*, organization_id, opportunity_id, actor, instructions="") -> LeadPitch:
+    """(Re)write the pitch for an approved client lead; the person's edits are replaced,
+    so the frontend asks first."""
+    organization = lock_organization(organization_id, actor, admin=False)
+    opportunity = _client_lead(organization, opportunity_id)
+    pitch = LeadPitch.objects.select_for_update().filter(opportunity=opportunity).first()
+    if pitch and pitch.status == PitchStatus.WRITING and not _stale(pitch.writing_started_at):
+        raise Conflict("The pitch is being written.", code="pitch_busy")
+    pitch = pitch or LeadPitch(organization=organization, opportunity=opportunity)
+    _queue_pitch(pitch, actor=actor, instructions=instructions)
+    record_event(
+        organization,
+        actor,
+        "pitch.requested",
+        target_id=opportunity.pk,
+        metadata={"title": opportunity.title[:120]},
+    )
+    return pitch
+
+
+@transaction.atomic
+def write_pitch_for_approval(*, organization_id, opportunity_id) -> LeadPitch | None:
+    """On approval of a client lead: write its pitch, unless it has one (approving again
+    after a rejection keeps the earlier one)."""
+    from apps.opportunities.models import Opportunity
+
+    opportunity = (
+        Opportunity.objects.select_for_update()
+        .filter(pk=opportunity_id, organization_id=organization_id)
+        .select_related("organization")
+        .first()
+    )
+    if (
+        opportunity is None
+        or opportunity.organization.is_archived
+        or opportunity.opportunity_type != OpportunityType.CLIENT
+        or opportunity.status not in ACTIVE_STATUSES
+        or LeadPitch.objects.filter(opportunity=opportunity).exists()
+    ):
+        return None
+    pitch = LeadPitch(organization_id=organization_id, opportunity=opportunity)
+    _queue_pitch(pitch, actor=None)
+    return pitch
+
+
+@transaction.atomic
+def edit_pitch(*, organization_id, opportunity_id, actor, **data) -> LeadPitch:
+    organization = lock_organization(organization_id, actor, admin=False)
+    opportunity = _client_lead(organization, opportunity_id)
+    pitch = get_object_or_404(LeadPitch.objects.select_for_update(), opportunity=opportunity)
+    if pitch.status == PitchStatus.WRITING and not _stale(pitch.writing_started_at):
+        raise Conflict("Wait until the pitch is written.", code="pitch_busy")
+    changed = [f for f in PITCH_FIELDS & data.keys() if getattr(pitch, f) != data[f]]
+    for field in changed:
+        setattr(pitch, field, data[field])
+    if changed:
+        pitch.status, pitch.error = PitchStatus.READY, ""
+        pitch.edited_by, pitch.edited_at = actor, timezone.now()
+        pitch.save()
+    return pitch
+
+
+@transaction.atomic
+def save_written_pitch(pitch_id, started_at, draft, *, prompt_id, model) -> bool:
+    """The writer's result, kept only if this is still the job it started (a newer
+    request or a person's edit wins)."""
+    pitch = (
+        LeadPitch.objects.select_for_update()
+        .filter(pk=pitch_id, status=PitchStatus.WRITING, writing_started_at=started_at)
+        .first()
+    )
+    if pitch is None:
+        return False
+    pitch.whatsapp = draft.whatsapp.strip()
+    pitch.email_subject = draft.email_subject.strip()[:200]
+    pitch.email_body = draft.email_body.strip()
+    pitch.call_points = [point.strip() for point in draft.call_points if point.strip()][:4]
+    pitch.prompt_id, pitch.model = prompt_id, model
+    pitch.status = PitchStatus.READY
+    pitch.edited_by, pitch.edited_at = None, None
+    pitch.save()
+    return True
+
+
+@transaction.atomic
+def fail_pitch(pitch_id, started_at, error) -> bool:
+    updated = LeadPitch.objects.filter(
+        pk=pitch_id, status=PitchStatus.WRITING, writing_started_at=started_at
+    ).update(status=PitchStatus.FAILED, error=error[:500], updated_at=timezone.now())
+    return bool(updated)
+
+
+@transaction.atomic
+def log_activity(
+    *, organization_id, opportunity_id, actor, channel, outcome, note="", follow_up_on=None
+) -> LeadActivity:
+    """Record a call, message or visit to a client lead and what came of it."""
+    organization = lock_organization(organization_id, actor, admin=False)
+    opportunity = _client_lead(organization, opportunity_id)
+    if follow_up_on and outcome in CLOSED_OUTCOMES:
+        raise ValidationError({"follow_up_on": "A closed lead needs no follow-up."})
+    if follow_up_on and follow_up_on < timezone.localdate():
+        raise ValidationError({"follow_up_on": "Pick today or a later day."})
+    activity = LeadActivity.objects.create(
+        organization=organization,
+        opportunity=opportunity,
+        actor=actor,
+        channel=channel,
+        outcome=outcome,
+        note=note.strip(),
+        follow_up_on=follow_up_on,
+    )
+    record_event(
+        organization,
+        actor,
+        "lead.contacted",
+        target_id=opportunity.pk,
+        metadata={"title": opportunity.title[:120], "channel": channel, "outcome": outcome},
+    )
+    return activity
+
+
+@transaction.atomic
+def delete_activity(*, organization_id, activity_id, actor) -> None:
+    """For mistakes: a member deletes their own entries, an admin anyone's."""
+    organization = lock_organization(organization_id, actor, admin=False)
+    activity = get_object_or_404(organization.lead_activities, pk=activity_id)
+    if activity.actor_id != actor.pk:
+        membership = require_membership(organization=organization, user=actor)
+        if membership.role != OrganizationMembership.Role.ADMIN:
+            raise PermissionDenied("Only an admin can delete someone else's entry.")
+    activity.delete()

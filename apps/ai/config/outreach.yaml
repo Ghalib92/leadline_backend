@@ -1,4 +1,4 @@
-# Leads and outreach: limits for the lead scout and the email agent.
+# Leads and outreach: limits for the lead scout, the email agent and the pitch writer.
 version: 1
 
 lead_scout:
@@ -19,4 +19,12 @@ emailer:
     max_searches: 0
     max_pages: 0
     max_tokens: 15000
+    max_wall_seconds: 120
+
+# What to say to an approved client lead: one model call, no searching or reading.
+pitch_writer:
+  budget:
+    max_searches: 0
+    max_pages: 0
+    max_tokens: 12000
     max_wall_seconds: 120

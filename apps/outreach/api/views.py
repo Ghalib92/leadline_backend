@@ -5,7 +5,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 from drf_spectacular.utils import OpenApiParameter, OpenApiTypes, extend_schema
 from rest_framework import generics, status
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
 from apps.opportunities.api.serializers import ChoiceSerializer
@@ -13,9 +13,10 @@ from apps.organizations.api.views import OrganizationAPIView
 
 from .. import selectors, services
 from ..calendar import deadlines_ics
-from ..choices import EmailPurpose, EmailStatus
-from ..models import Contact, OutreachEmail
+from ..choices import CallListView, EmailPurpose, EmailStatus
+from ..models import Contact, LeadActivity, OutreachEmail
 from .serializers import (
+    CallListItemSerializer,
     ContactSearchSerializer,
     ContactSerializer,
     ContactWriteSerializer,
@@ -24,7 +25,12 @@ from .serializers import (
     EmailDraftSerializer,
     EmailEditSerializer,
     EmailRedraftSerializer,
+    LeadActivitySerializer,
+    LeadActivityWriteSerializer,
+    LeadPitchSerializer,
     OutreachEmailSerializer,
+    PitchEditSerializer,
+    PitchRequestSerializer,
     ReminderPreferenceSerializer,
 )
 
@@ -422,3 +428,112 @@ class ReminderPreferenceView(OutreachAPIView):
         )
         data = {"enabled": preference.enabled, "days_before": preference.days_before}
         return Response(ReminderPreferenceSerializer(data).data)
+
+
+# ---------------------------------------------------------------------------
+# Client leads: pitches and the call list
+# ---------------------------------------------------------------------------
+
+
+@extend_schema(tags=["Call list"])
+class LeadPitchView(OutreachAPIView):
+    """What to say to an approved client lead. It is written when the lead is approved;
+    POST rewrites it (status `writing`, then `ready`; poll it), PATCH edits it. Nothing
+    is sent from here: a person sends it from their own phone or email."""
+
+    serializer_class = LeadPitchSerializer
+    starts_ai_job = True
+
+    def pitch_response(self, response_status=200):
+        pitch = selectors.pitch_for(self.get_opportunity())
+        if pitch is None:
+            raise NotFound("This lead has no pitch yet.")
+        return Response(LeadPitchSerializer(pitch).data, status=response_status)
+
+    def get(self, request, organization_id, opportunity_id):
+        return self.pitch_response()
+
+    @extend_schema(request=PitchRequestSerializer, responses={202: LeadPitchSerializer})
+    def post(self, request, organization_id, opportunity_id):
+        self.get_opportunity()
+        services.write_pitch(
+            organization_id=organization_id,
+            opportunity_id=opportunity_id,
+            actor=request.user,
+            **self.validated(PitchRequestSerializer),
+        )
+        return self.pitch_response(status.HTTP_202_ACCEPTED)
+
+    @extend_schema(request=PitchEditSerializer)
+    def patch(self, request, organization_id, opportunity_id):
+        self.get_opportunity()
+        services.edit_pitch(
+            organization_id=organization_id,
+            opportunity_id=opportunity_id,
+            actor=request.user,
+            **self.validated(PitchEditSerializer),
+        )
+        return self.pitch_response()
+
+
+@extend_schema(tags=["Call list"])
+class LeadActivityListView(OutreachAPIView, generics.ListAPIView):
+    """Calls, messages and visits to a client lead, newest first. POST logs one."""
+
+    serializer_class = LeadActivitySerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return LeadActivity.objects.none()
+        return selectors.activities_for(self.get_opportunity())
+
+    @extend_schema(request=LeadActivityWriteSerializer, responses={201: LeadActivitySerializer})
+    def post(self, request, organization_id, opportunity_id):
+        self.get_opportunity()
+        activity = services.log_activity(
+            organization_id=organization_id,
+            opportunity_id=opportunity_id,
+            actor=request.user,
+            **self.validated(LeadActivityWriteSerializer),
+        )
+        return Response(LeadActivitySerializer(activity).data, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(tags=["Call list"])
+class LeadActivityDetailView(OutreachAPIView):
+    serializer_class = LeadActivitySerializer
+
+    @extend_schema(responses={204: None})
+    def delete(self, request, organization_id, activity_id):
+        generics.get_object_or_404(self.get_readable_organization().lead_activities, pk=activity_id)
+        services.delete_activity(
+            organization_id=organization_id, activity_id=activity_id, actor=request.user
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema(
+    tags=["Call list"],
+    parameters=[
+        OpenApiParameter(
+            "view",
+            OpenApiTypes.STR,
+            enum=CallListView.values,
+            description="to_contact, follow_up, closed or all (default).",
+        )
+    ],
+)
+class CallListAPIView(OutreachAPIView, generics.ListAPIView):
+    """Approved client leads to reach, in working order: follow-ups that are due, then
+    leads never contacted (best first), then the rest."""
+
+    serializer_class = CallListItemSerializer
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return LeadActivity.objects.none()
+        view = self.request.query_params.get("view") or CallListView.ALL
+        if view not in CallListView.values:
+            raise ValidationError({"view": "Unknown view."})
+        return selectors.call_list(self.get_readable_organization(), view=view)

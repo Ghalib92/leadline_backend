@@ -6,7 +6,16 @@ from apps.common.models import UUIDTimestampedModel
 from apps.opportunities.models import Opportunity
 from apps.organizations.models import Organization
 
-from .choices import ContactKind, ContactSource, EmailPurpose, EmailStatus, SearchStatus
+from .choices import (
+    ContactKind,
+    ContactSource,
+    EmailPurpose,
+    EmailStatus,
+    LeadChannel,
+    LeadOutcome,
+    PitchStatus,
+    SearchStatus,
+)
 
 
 class Contact(UUIDTimestampedModel):
@@ -171,3 +180,89 @@ class ReminderLog(UUIDTimestampedModel):
                 name="reminder_log_unique",
             ),
         ]
+
+
+# ---------------------------------------------------------------------------
+# Client leads: the pitch to send and what came of reaching out
+# ---------------------------------------------------------------------------
+
+
+class LeadPitch(UUIDTimestampedModel):
+    """What to say to an approved client lead: a WhatsApp message, an email and points
+    for a call. The AI writes it from the lead's evidence and the clients brief;
+    people edit it. Nothing is sent from here: a person sends it from their own phone
+    or email."""
+
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="+")
+    opportunity = models.OneToOneField(Opportunity, on_delete=models.CASCADE, related_name="pitch")
+    status = models.CharField(
+        max_length=10, choices=PitchStatus.choices, default=PitchStatus.WRITING
+    )
+    instructions = models.TextField(blank=True, default="")  # the person's, for a rewrite
+    whatsapp = models.TextField(blank=True, default="")
+    email_subject = models.CharField(max_length=200, blank=True, default="")
+    email_body = models.TextField(blank=True, default="")
+    call_points = models.JSONField(default=list, blank=True)  # short talking points
+    edited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+",
+    )  # fmt: skip
+    edited_at = models.DateTimeField(null=True, blank=True)
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+",
+    )  # fmt: skip  # null when started by the approval
+    writing_started_at = models.DateTimeField(null=True, blank=True)
+    error = models.CharField(max_length=500, blank=True, default="")
+    prompt_id = models.CharField(max_length=60, blank=True, default="")
+    model = models.CharField(max_length=120, blank=True, default="")
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(status__in=PitchStatus.values),
+                name="outreach_pitch_valid_status",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Pitch for {self.opportunity_id} ({self.status})"
+
+
+class LeadActivity(UUIDTimestampedModel):
+    """One attempt to reach a client lead and what came of it, logged by a person. The
+    newest is the lead's current state on the call list."""
+
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name="lead_activities"
+    )
+    opportunity = models.ForeignKey(
+        Opportunity, on_delete=models.CASCADE, related_name="lead_activities"
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="+"
+    )
+    channel = models.CharField(max_length=10, choices=LeadChannel.choices)
+    outcome = models.CharField(max_length=20, choices=LeadOutcome.choices)
+    note = models.TextField(blank=True, default="")
+    follow_up_on = models.DateField(null=True, blank=True)  # when to try again
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        verbose_name_plural = "lead activities"
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(channel__in=LeadChannel.values),
+                name="outreach_activity_valid_channel",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(outcome__in=LeadOutcome.values),
+                name="outreach_activity_valid_outcome",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["opportunity", "-created_at"], name="outreach_activity_lead"),
+        ]
+
+    def __str__(self):
+        return f"{self.get_channel_display()}: {self.get_outcome_display()}"

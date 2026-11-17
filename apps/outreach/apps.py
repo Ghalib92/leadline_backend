@@ -8,4 +8,4 @@ class OutreachConfig(AppConfig):
     verbose_name = "Leads, outreach and deadlines"
 
     def ready(self):
-        from . import checks  # noqa: F401 — registers system checks
+        from . import checks, receivers  # noqa: F401 — registers checks and signal receivers

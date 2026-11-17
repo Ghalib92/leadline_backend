@@ -21,6 +21,7 @@ from apps.common.api.exceptions import Conflict
 from apps.common.jobs import enqueue
 from apps.knowledge.scope import KnowledgeScope
 from apps.opportunities.choices import OpportunityStatus
+from apps.organizations.choices import OpportunityType
 from apps.organizations.services import lock_organization, record_event
 
 from .choices import ProposalJob, ProposalStatus, VersionSource
@@ -99,6 +100,8 @@ def start_draft(*, organization_id, opportunity_id, actor) -> Proposal:
         raise Conflict(
             "Approve the opportunity before writing a proposal for it.", code="not_approved"
         )
+    if opportunity.opportunity_type == OpportunityType.CLIENT:
+        raise Conflict("Client leads get a pitch, not a proposal.", code="client_lead")
     proposal = Proposal.objects.select_for_update().filter(
         opportunity=opportunity
     ).first() or Proposal(organization=organization, opportunity=opportunity, created_by=actor)
@@ -131,6 +134,8 @@ def start_draft_for_approval(*, organization_id, opportunity_id) -> Proposal | N
         return None
     if opportunity.status not in DRAFTABLE_STATUSES:
         return None
+    if opportunity.opportunity_type == OpportunityType.CLIENT:
+        return None  # client leads get a pitch (apps.outreach), not a proposal
     if Proposal.objects.filter(opportunity=opportunity).exists():
         return None
     proposal = Proposal(organization_id=organization_id, opportunity=opportunity)

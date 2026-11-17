@@ -93,6 +93,11 @@ roles:
     tier: answer
     reasoning_effort: medium
     description: Drafts outreach emails for a person to approve.
+  pitch_writer:
+    tier: answer
+    reasoning_effort: low
+    max_tokens: 3000
+    description: Writes a WhatsApp message, an email and call points for an approved client lead.
   opportunity_analyst:
     tier: answer
     reasoning_effort: medium

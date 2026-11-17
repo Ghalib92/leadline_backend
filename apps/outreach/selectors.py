@@ -1,17 +1,20 @@
-"""Reads for contacts, outreach and deadlines, always scoped to one organization."""
+"""Reads for contacts, outreach, client-lead pitches, the call list and deadlines, always
+scoped to one organization."""
 
 from datetime import datetime, time, timedelta
 
 from django.conf import settings
-from django.db.models import Q
+from django.db.models import Case, F, IntegerField, OuterRef, Q, Subquery, Value, When
 from django.utils import timezone
 
 from apps.discovery.selectors import dossier_content, profile_context
 from apps.opportunities.choices import ACTIVE_PIPELINE_STATUSES, ReviewDecision
 from apps.opportunities.models import Opportunity
+from apps.organizations.choices import LeadSignal, OpportunityType
 from apps.organizations.models import OrganizationMembership
 
-from .models import OutreachEmail, ReminderLog, ReminderPreference
+from .choices import CLOSED_OUTCOMES, CallListView
+from .models import LeadActivity, OutreachEmail, ReminderLog, ReminderPreference
 
 
 def contacts_for(opportunity):
@@ -160,3 +163,99 @@ def email_inputs(email) -> dict:
         "opportunity": _opportunity_brief(email.opportunity),
         "contact": {"name": email.to_name, "role": email.contact.role if email.contact else ""},
     }
+
+
+# ---------------------------------------------------------------------------
+# Client leads: pitches and the call list
+# ---------------------------------------------------------------------------
+
+WEBSITE_STATUS = {
+    "listed": "has a website",
+    "found": "has a website (found in a web search)",
+    "down": "has a website, but it was down when checked",
+    "none": "no website (its listing shows none)",
+    "not_found": "no website found on its listing or in a web search",
+    "unknown": "not known",
+}
+# Approved client leads still being worked.
+CALL_LIST_STATUSES = ("pursuing", "submitted")
+
+
+def pitch_for(opportunity):
+    return getattr(opportunity, "pitch", None)
+
+
+def pitch_inputs(pitch) -> dict:
+    """The pitch writer's inputs: the organization with its clients brief, and the lead's
+    facts and checked evidence (never page text)."""
+    organization, opportunity = pitch.organization, pitch.opportunity
+    business = opportunity.business or {}
+    signals = dict(LeadSignal.choices)
+    lead = {
+        "name": opportunity.title,
+        "kind": business.get("category", ""),
+        "place": opportunity.location or business.get("city", ""),
+        "rating": business.get("rating"),
+        "reviews": business.get("reviews"),
+        "website": business.get("website", ""),
+        "website_status": WEBSITE_STATUS.get(business.get("website_status", ""), "not known"),
+        "evidence": [item["detail"] for item in business.get("evidence", []) if item.get("detail")],
+        "signs": [signals.get(code, code) for code in business.get("signals", [])],
+        "on_social": sorted(business.get("socials", {})),
+        "why_picked": opportunity.match_reasons,
+        "pitch_angle": business.get("pitch_angle", ""),
+    }
+    return {
+        "organization": {
+            "organization_name": organization.name,
+            "profile": profile_context(organization, "clients"),
+            "dossier": dossier_content(organization),
+        },
+        "lead": {key: value for key, value in lead.items() if value not in ("", None, [])},
+    }
+
+
+def activities_for(opportunity):
+    return opportunity.lead_activities.select_related("actor")
+
+
+def call_list(organization, *, view: str = CallListView.ALL):
+    """Approved client leads with their latest contact, in working order: follow-ups that
+    are due, then leads never contacted (best first), then the rest by follow-up date."""
+    latest = LeadActivity.objects.filter(opportunity=OuterRef("pk")).order_by("-created_at", "-id")
+    leads = (
+        Opportunity.objects.filter(
+            organization=organization,
+            opportunity_type=OpportunityType.CLIENT,
+            status__in=CALL_LIST_STATUSES,
+        )
+        .select_related("pitch", "organization")
+        .annotate(
+            last_outcome=Subquery(latest.values("outcome")[:1]),
+            last_channel=Subquery(latest.values("channel")[:1]),
+            last_note=Subquery(latest.values("note")[:1]),
+            last_contacted_at=Subquery(latest.values("created_at")[:1]),
+            follow_up_on=Subquery(latest.values("follow_up_on")[:1]),
+        )
+    )
+    if view == CallListView.TO_CONTACT:
+        leads = leads.filter(last_outcome__isnull=True)
+    elif view == CallListView.FOLLOW_UP:
+        leads = leads.filter(last_outcome__isnull=False).exclude(last_outcome__in=CLOSED_OUTCOMES)
+    elif view == CallListView.CLOSED:
+        leads = leads.filter(last_outcome__in=CLOSED_OUTCOMES)
+    today = timezone.localdate()
+    return leads.annotate(
+        rank=Case(
+            When(follow_up_on__lte=today, then=Value(0)),
+            When(last_outcome__isnull=True, then=Value(1)),
+            When(last_outcome__in=CLOSED_OUTCOMES, then=Value(3)),
+            default=Value(2),
+            output_field=IntegerField(),
+        )
+    ).order_by(
+        "rank",
+        F("follow_up_on").asc(nulls_last=True),
+        "-match_score",
+        "id",
+    )

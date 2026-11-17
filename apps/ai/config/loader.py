@@ -354,6 +354,7 @@ class OutreachSettings(BaseModel):
     version: int
     lead_scout: LeadScoutSettings
     emailer: EmailerSettings
+    pitch_writer: EmailerSettings  # a budget only, like the emailer
 
 
 @cache
