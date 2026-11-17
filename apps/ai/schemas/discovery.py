@@ -27,6 +27,8 @@ class Candidate(BaseModel):
     verification: dict = {}
     # A client lead's business facts (apps.ai.schemas.clients.Business.as_details()).
     business: dict = {}
+    # A tender's structured facts (apps.ai.tools.sources.ppip.tender_details()).
+    tender: dict = {}
 
 
 # ---------------------------------------------------------------------------

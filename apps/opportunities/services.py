@@ -77,6 +77,7 @@ def add_discovered(*, run, candidate) -> tuple[Opportunity, bool]:
         requirements=candidate.requirements,
         verification=candidate.verification,
         business=candidate.business,
+        tender=candidate.tender,
         **keys,
     )
     if is_client:
@@ -168,8 +169,8 @@ def review(*, organization_id, opportunity_id, actor, decision, reason="", comme
         status_before=opportunity.status,
         match_score=opportunity.match_score,
         snapshot=_snapshot(opportunity),
-        judge_prompt=(run.prompt_versions or {}).get("judge", "") if run else "",
-        judge_model=(run.models_used or {}).get("judge", "") if run else "",
+        judge_prompt=_judge_used(run, "prompt_versions"),
+        judge_model=_judge_used(run, "models_used"),
     )
     opportunity.status = target
     opportunity.save(update_fields=["status", "updated_at"])
@@ -203,6 +204,12 @@ def review(*, organization_id, opportunity_id, actor, decision, reason="", comme
             robust=True,
         )
     return review
+
+
+def _judge_used(run, field: str) -> str:
+    """The judge behind the run's scores: the opportunity judge, or the tender judge."""
+    used = (getattr(run, field, None) or {}) if run else {}
+    return used.get("judge") or used.get("tender_judge") or ""
 
 
 def _snapshot(opportunity) -> dict:

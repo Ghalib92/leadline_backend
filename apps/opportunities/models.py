@@ -57,6 +57,9 @@ class Opportunity(UUIDTimestampedModel):
     # Client leads only: the business's contact and listing facts (name, category,
     # address, phone, website, rating, signs it needs the organization…).
     business = models.JSONField(default=dict, blank=True)
+    # Tenders from structured portals (tenders.go.ke): reference, buyer, category,
+    # closing time, fee, bid security, AGPO reservation, documents, buyer's contacts.
+    tender = models.JSONField(default=dict, blank=True)
     # Deduplication across runs (apps/opportunities/dedupe.py): the same listing,
     # by normalised URL or by title and funder, is never added twice.
     dedupe_key = models.CharField(max_length=64)

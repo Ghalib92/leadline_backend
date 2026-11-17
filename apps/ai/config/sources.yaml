@@ -76,6 +76,20 @@ sources:
     adapter: eu_funding
     domain: ec.europa.eu
     covers: European Commission grants, calls for proposals and tenders (Horizon Europe, Digital Europe, Erasmus+, etc.).
+  kenya_ppip:
+    adapter: ppip
+    domain: tenders.go.ke
+    covers: Kenya's Public Procurement Information Portal — every open tender of Kenyan national ministries, county governments, state corporations, NG-CDF and public schools and universities (goods, works, services, consultancy). Search with plain words for what is bought ("software", "website", "ICT equipment"), not long phrases.
+    options:
+      max_pages: 10        # 100 tenders a page; a few hundred are open at a time
+      timeout_seconds: 60
+      page_pause_seconds: 1  # the portal allows 60 requests a minute
+      cache_minutes: 30      # runs within this share one read of the portal
+  kenya_gov_web:
+    adapter: tavily
+    domain: Kenyan government sites
+    covers: Tender notices on Kenyan public bodies' own websites (.go.ke) — counties, parastatals and agencies that also advertise outside the national portal.
+    options: {include_domains: [go.ke]}
   ted_europa:
     adapter: ted_europa
     domain: ted.europa.eu
@@ -162,7 +176,7 @@ source_categories:
     sources: [grants_gov, eu_funding, web_search]
   procurement:
     label: Procurement portals
-    sources: [world_bank, ted_europa, web_search]
+    sources: [kenya_ppip, kenya_gov_web, world_bank, ted_europa, web_search]
   news:
     label: News & announcements
     sources: [news_search]

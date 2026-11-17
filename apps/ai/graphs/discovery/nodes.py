@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 
 from django.utils import timezone
 
-from apps.ai.agents.judge import judge_fit
+from apps.ai.agents.judge import judge_fit, judge_role
 from apps.ai.agents.researcher import select_leads
 from apps.ai.agents.source_reader import read_source_page
 from apps.ai.agents.supervisor import plan_searches
@@ -29,12 +29,15 @@ from apps.ai.tools.search.base import SearchError, SearchHit
 from apps.discovery.choices import SkipReason
 from apps.knowledge.scope import KnowledgeScope
 from apps.opportunities.dedupe import normalize_text, normalize_url
+from apps.organizations.choices import TenderEligibility
 
 from .state import DiscoveryState, Lead
 
 logger = logging.getLogger(__name__)
 DONE = "done"  # `stop` value of a run that finished normally
-STRUCTURED_SOURCES = frozenset({"grants_gov", "world_bank", "eu_funding", "ted_europa"})
+STRUCTURED_SOURCES = frozenset(
+    {"grants_gov", "world_bank", "eu_funding", "ted_europa", "kenya_ppip"}
+)
 
 
 def _stopped(state) -> bool:
@@ -474,9 +477,13 @@ def judge(runtime, state: DiscoveryState) -> DiscoveryState:
         )
 
     evidence = _evidence(runtime, verified)
+    role = judge_role(runtime.request.goal)
 
     def work(lead):
-        return judge_fit(runtime, _facts(lead), memory[id(lead)], evidence.get(id(lead), ""))
+        verdict = judge_fit(
+            runtime, _facts(lead), memory[id(lead)], evidence.get(id(lead), ""), role=role
+        )
+        return _agpo_cap(runtime, lead, verdict)
 
     try:
         for lead, verdict, error in _parallel(runtime, verified, work):
@@ -499,7 +506,7 @@ def judge(runtime, state: DiscoveryState) -> DiscoveryState:
 def _evidence(runtime, verified) -> dict:
     """Passages from the company's documents for each lead, within the run's knowledge
     scope. Looked up here, before the scoring threads, which never touch the database."""
-    if "company_evidence" not in runtime.prompt_for("judge").variables:
+    if "company_evidence" not in runtime.prompt_for(judge_role(runtime.request.goal)).variables:
         return {}
     scope = KnowledgeScope.from_config(runtime.request.knowledge)
     if scope.reads_nothing:
@@ -525,7 +532,7 @@ def _evidence(runtime, verified) -> dict:
 
 
 def _memory(runtime, lead) -> list[dict]:
-    if "past_decisions" not in runtime.prompt_for("judge").variables:
+    if "past_decisions" not in runtime.prompt_for(judge_role(runtime.request.goal)).variables:
         return []
     try:
         return past_decisions(
@@ -544,7 +551,46 @@ def _facts(lead) -> dict:
     deadline = _deadline(lead)
     facts["deadline"] = deadline.isoformat() if deadline else ""
     facts["source"] = _site(lead)
+    tender = lead.hit.extra.get("tender") or {}
+    if tender:
+        # The portal's own facts; documents and the buyer's contacts are for people.
+        facts["tender"] = {
+            key: value
+            for key, value in tender.items()
+            if key not in ("documents", "buyer_contact", "source")
+        }
+    if deadline:
+        facts["days_to_close"] = (deadline - timezone.localdate()).days
     return {key: value for key, value in facts.items() if value not in ("", None, [])}
+
+
+# AGPO groups as tenders.go.ke names them → the tenders brief's eligibility labels.
+AGPO_LABELS = {
+    "youth": TenderEligibility.AGPO_YOUTH.label,
+    "women": TenderEligibility.AGPO_WOMEN.label,
+    "disab": TenderEligibility.AGPO_PWD.label,
+    "pwd": TenderEligibility.AGPO_PWD.label,
+}
+AGPO_CAP = 20
+
+
+def _agpo_cap(runtime, lead, verdict):
+    """A tender reserved for AGPO groups the organization isn't in can't be won, however
+    the model scored it: capped, with the reason as a concern. Decided in code."""
+    groups = (lead.hit.extra.get("tender") or {}).get("reserved_for") or []
+    if not groups or verdict.score <= AGPO_CAP:
+        return verdict
+    labels = set((runtime.request.profile.get("tender_brief") or {}).get("eligibility") or [])
+    needed = {
+        label for group in groups for key, label in AGPO_LABELS.items() if key in group.lower()
+    }
+    if not needed or needed & labels:
+        return verdict
+    concern = (
+        f"Reserved for AGPO {', '.join(groups).lower()} firms; your tenders brief doesn't "
+        "say you qualify."
+    )
+    return verdict.model_copy(update={"score": AGPO_CAP, "concerns": [concern, *verdict.concerns]})
 
 
 def _candidate(lead, verdict) -> Candidate:
@@ -575,6 +621,7 @@ def _candidate(lead, verdict) -> Candidate:
             "picked_because": lead.reason,
             "checked_on": date.today().isoformat(),
         },
+        tender=lead.hit.extra.get("tender") or {},
     )
 
 

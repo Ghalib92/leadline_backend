@@ -26,6 +26,7 @@ from apps.ai.graphs.discovery_runner import (
     register_runner,
 )
 from apps.ai.schemas.discovery import Candidate
+from apps.discovery.choices import TENDER_TYPES
 
 SITES = {
     "web": ["fundsforngos.org", "devex.com"],
@@ -255,7 +256,28 @@ def _candidate(rng, request, topics, index) -> Candidate:
             }
         },
         verification={"sample": True},
+        # Its own generator, so the run's sequence of samples stays as it was.
+        tender=_sample_tender(random.Random(title), funder) if kind in TENDER_TYPES else {},
     )
+
+
+def _sample_tender(rng, buyer: str) -> dict:
+    """Made-up portal facts for a sample tender, so the tender card can be tried."""
+    reserved = rng.random() < 0.3
+    return {
+        "reference": f"SAMPLE/{rng.randint(100, 999)}/2026-2027",
+        "buyer": buyer,
+        "category": rng.choice(["Goods", "Non Consultancy Services", "Consultancy Services"]),
+        "method": "Open Tender",
+        "closes_at": (timezone.now() + timedelta(days=rng.randint(3, 30))).isoformat(),
+        "tender_fee": rng.choice([0, 1000]),
+        "bid_security": rng.choice(["", "50,000 KES", "2% of the bid"]),
+        "submission": [rng.choice(["Online (e-procurement)", "Written (Physical/Hard Copy)"])],
+        **({"reserved_for": [rng.choice(["Youth", "Women"])]} if reserved else {}),
+        "documents": [{"name": "Tender document (sample)", "url": "https://example.org/t.pdf"}],
+        "buyer_contact": {"email": "procurement@example.org", "website": "https://example.org"},
+        "source": "sample",
+    }
 
 
 register_runner("fake", run_fake_discovery)
