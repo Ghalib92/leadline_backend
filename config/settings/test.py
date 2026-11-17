@@ -43,3 +43,10 @@ LANGSMITH_TRACING = False
 PROPOSAL_RUNNER = "fake"
 PROPOSAL_FAKE_STEP_SECONDS = 0
 HUNTER_API_KEY = ""
+# Tests never depend on the developer's optional keys: no fallback model, no renderer
+# or speed-check keys unless a test sets them.
+AI_FALLBACK_PROVIDER = ""
+GEMINI_API_KEY = ""
+JINA_API_KEY = ""
+FIRECRAWL_API_KEY = ""
+PAGESPEED_API_KEY = ""

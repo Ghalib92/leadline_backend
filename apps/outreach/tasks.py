@@ -108,7 +108,7 @@ def write_email(email_id):
         subject=draft.subject,
         body=draft.body,
         prompt_id=runtime.prompt_versions.get("emailer", ""),
-        model=resolve_role("emailer").model,
+        model=runtime.models_used.get("emailer") or resolve_role("emailer").model,
     )
 
 
@@ -150,7 +150,7 @@ def write_lead_pitch(pitch_id):
         started_at,
         draft,
         prompt_id=runtime.prompt_versions.get("pitch_writer", ""),
-        model=resolve_role("pitch_writer").model,
+        model=runtime.models_used.get("pitch_writer") or resolve_role("pitch_writer").model,
     )
 
 

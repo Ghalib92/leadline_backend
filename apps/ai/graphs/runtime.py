@@ -59,7 +59,17 @@ class AgentRuntimeMixin:
             self.budget.add_tokens(exc.usage)
             raise
         self.budget.add_tokens(result.usage)
+        self.note_model(role, result.model)
         return result.output
+
+    def note_model(self, role: str, answered_by: str) -> None:
+        """Records a fallback model next to the role's model when it answered."""
+        if not answered_by:
+            return
+        with self._lock:
+            used = self.models_used.get(role, "")
+            if answered_by not in used.split(" + "):
+                self.models_used[role] = f"{used} + {answered_by}" if used else answered_by
 
 
 def organization_brief(name: str, profile: dict, dossier: dict | None) -> str:

@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 class StructuredResult[T: BaseModel]:
     output: T
     usage: dict  # token counts reported by the provider, when it reports them
+    model: str = ""  # the model that answered (a fallback's, when one stepped in)
 
 
 def invoke_structured[T: BaseModel](
@@ -50,7 +51,10 @@ def invoke_structured[T: BaseModel](
         parsed = result.get("parsed")
         _add_usage(usage, getattr(result.get("raw"), "usage_metadata", None) or {})
         if result.get("parsing_error") is None and isinstance(parsed, schema):
-            return StructuredResult(output=parsed, usage=usage)
+            metadata = getattr(result.get("raw"), "response_metadata", None) or {}
+            return StructuredResult(
+                output=parsed, usage=usage, model=str(metadata.get("model_name") or "")
+            )
         error = result.get("parsing_error") or ValueError("The model returned no output.")
         _log_failure(schema, attempt, attempts, error, raw=result.get("raw"))
     raise StructuredOutputError(

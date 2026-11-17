@@ -7,8 +7,12 @@ by depth), in parallel:
     check    its website read like a visitor would: down or a placeholder, HTTPS, set up
              for phones, copyright year, booking, chat, payments
     contact  phone, email, WhatsApp and social links from the page; the contact page too
-             when the home page has no phone or email
+             when the home page has no phone or email; Hunter.io for an email when the
+             site shows none (a few per run, clients.lookup.hunter_per_run)
     speed    Google PageSpeed's mobile score, when PAGESPEED_API_KEY is set
+
+Sites built by JavaScript, or that refuse simple clients, are read through a renderer
+(Jina Reader, then Firecrawl); never a site whose robots.txt keeps us out.
 
 Everything is read by code: no page text reaches a model. Searches and pages count
 against the run's budget (client runs get one search and pages_per_lead pages per
@@ -25,6 +29,8 @@ from urllib.parse import urlsplit
 from apps.ai.exceptions import AIConfigError
 from apps.ai.graphs.budget import BudgetExhausted
 from apps.ai.schemas.clients import Business
+from apps.ai.tools.contacts.hunter import HunterError, domain_search, hunter_enabled
+from apps.ai.tools.fetch.renderers import build_renderers
 from apps.ai.tools.search.base import SearchError
 from apps.ai.tools.websites.check import SiteChecker
 from apps.ai.tools.websites.identify import find_presence
@@ -46,8 +52,16 @@ class LookupTools:
     search: object | None
     checker: SiteChecker
     pagespeed: bool = False
+    hunter_left: int = 0  # Hunter.io lookups this run may still make
     _lock: threading.Lock = field(default_factory=threading.Lock)
     _warned: set = field(default_factory=set)
+
+    def take_hunter(self) -> bool:
+        with self._lock:
+            if self.hunter_left <= 0:
+                return False
+            self.hunter_left -= 1
+            return True
 
     def warn_once(
         self, runtime: ClientsRuntime, key: str, message: str, *, partial: bool = True
@@ -72,10 +86,12 @@ def build_tools(runtime: ClientsRuntime) -> LookupTools:
             "the directories list are checked.",
             partial=False,
         )
+    lookup = runtime.settings.lookup
     return LookupTools(
         search=search,
-        checker=SiteChecker(runtime.settings.lookup),
+        checker=SiteChecker(lookup, renderer=build_renderers(lookup.renderers)),
         pagespeed=pagespeed_enabled(),
+        hunter_left=lookup.hunter_per_run if hunter_enabled() else 0,
     )
 
 
@@ -208,7 +224,17 @@ def _check_site(runtime, business, website, tools, socials, found_on) -> dict:
     runtime.budget.use_page()
     host = _host(website)
     runtime.emit(STEP, f"Checking {host}", tool="website_check", url=website)
-    visit = tools.checker.visit(website)
+
+    def render(url):
+        """A renderer reads the page: a page of the budget, and a timeline event."""
+        try:
+            runtime.budget.use_page()
+        except BudgetExhausted:
+            return False
+        runtime.emit(STEP, f"Reading {host} as a browser would", tool="renderer", url=url)
+        return True
+
+    visit = tools.checker.visit(website, before_render=render)
     if visit is None:
         return {}
     site, page = visit.check, visit.page
@@ -238,6 +264,11 @@ def _check_site(runtime, business, website, tools, socials, found_on) -> dict:
             for feature, present in more.features.items():
                 if present:
                     site = site.model_copy(update={feature: True})
+    if not contacts["email"] and site.reachable:
+        email = _hunter_email(runtime, website, tools)
+        if email:
+            contacts["email"] = updates["email"] = email
+            found_on["email"] = "Hunter"
     if site.readable and tools.pagespeed:
         site = _speed(runtime, site, tools)
     runtime.emit(
@@ -248,6 +279,22 @@ def _check_site(runtime, business, website, tools, socials, found_on) -> dict:
         data={"signals": site.signals()},
     )
     return {**updates, "site": site}
+
+
+def _hunter_email(runtime, website: str, tools) -> str:
+    """The business's best published email for its domain, from Hunter.io."""
+    domain = _host(website)
+    if not domain or not tools.take_hunter():
+        return ""
+    runtime.emit(STEP, f"Looking up an email for {domain} on Hunter", tool="hunter")
+    try:
+        found = domain_search(domain, limit=5, kind=None)
+    except HunterError as exc:
+        tools.warn_once(runtime, "hunter", f"Hunter: {exc}", partial=False)
+        return ""
+    # A team inbox (info@, bookings@) first: the business's own front door.
+    found.sort(key=lambda item: (bool(item["name"]), -item["confidence"]))
+    return found[0]["email"] if found else ""
 
 
 def _speed(runtime, site, tools):
@@ -275,7 +322,7 @@ def _check_message(host: str, site) -> str:
     if not site.reachable:
         return f"{host} is down: {site.problem}"
     if site.blocked:
-        return f"{host} doesn't allow automated reading; not checked"
+        return f"{host} couldn't be read ({site.problem or 'blocked'}); not checked"
     notes = []
     if site.https is False:
         notes.append("no HTTPS")
@@ -285,7 +332,8 @@ def _check_message(host: str, site) -> str:
         notes.append(f"© {site.copyright_year}")
     if site.slow:
         notes.append("slow on phones")
-    return f"{host}: " + (", ".join(notes) if notes else "looks up to date")
+    via = f" (read through {site.read_by})" if site.read_by else ""
+    return f"{host}{via}: " + (", ".join(notes) if notes else "looks up to date")
 
 
 def _summarise(runtime: ClientsRuntime, leads: list[dict]) -> None:

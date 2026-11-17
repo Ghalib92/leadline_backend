@@ -4,8 +4,13 @@ Honors robots.txt, refuses non-public addresses (tools.http) and reads only the
 opening of a page. A failure says why in words a person can repeat to the business
 ("its domain no longer resolves"); a site that refuses automated visitors is
 "blocked", which is no evidence of anything, and so is one that is too slow to answer.
+
+A renderer (tools.fetch.renderers: Jina Reader, Firecrawl) reads pages a plain fetch
+can't: sites that refuse simple clients or time out, and pages built by JavaScript
+(almost no text in their HTML). Never a page whose robots.txt keeps us out.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -23,6 +28,7 @@ HTML_TYPES = ("text/html", "application/xhtml+xml")
 # Answers that mean "not for robots" rather than "broken".
 REFUSALS = {401, 403, 406, 429}
 MAX_PAGE_BYTES = 1_000_000
+ROBOTS_SAY_NO = "its robots.txt asks automated readers to stay out"
 
 
 @dataclass
@@ -32,13 +38,18 @@ class SiteVisit:
 
 
 class SiteChecker:
-    def __init__(self, lookup: LookupSettings, *, today: date | None = None):
+    def __init__(self, lookup: LookupSettings, *, today: date | None = None, renderer=None):
         self.lookup = lookup
         self.today = today or date.today()
         self.robots = Robots()
+        self.renderer = renderer  # a RendererChain, or None
 
-    def visit(self, url: str) -> SiteVisit | None:
-        """The home page checked; None when the address is not a public web address."""
+    def visit(
+        self, url: str, *, before_render: Callable[[str], bool] | None = None
+    ) -> SiteVisit | None:
+        """The home page checked; None when the address is not a public web address.
+        `before_render(url)` is asked before a renderer is used (it spends a page of
+        the budget and says so); False skips rendering."""
         result = self._get(url)
         if result is None:
             return None
@@ -51,8 +62,17 @@ class SiteChecker:
                     visit.check.certificate_error = True
                     visit.check.problem = result.problem
                     return visit
+            if result.blocked and result.problem != ROBOTS_SAY_NO:
+                rendered = self._render(result.url, before_render)
+                if rendered is not None:
+                    return rendered
             return SiteVisit(check=result)
-        return self._read(*result)
+        visit = self._read(*result)
+        if visit.check.reachable and visit.page.text_chars < self.lookup.render_below_chars:
+            rendered = self._render(visit.check.url, before_render)
+            if rendered is not None and rendered.page.text_chars > visit.page.text_chars:
+                return rendered
+        return visit
 
     def contacts(self, url: str) -> PageFacts | None:
         """Another page of the site (its contact page), for contacts and features."""
@@ -68,7 +88,9 @@ class SiteChecker:
         """(final_url, html), or a SiteCheck saying why it could not be read, or None."""
         try:
             if not self.robots.allowed(url):
-                return SiteCheck(url=url, blocked=True, checked_at=self._date())
+                return SiteCheck(
+                    url=url, blocked=True, problem=ROBOTS_SAY_NO, checked_at=self._date()
+                )
         except UnsafeURL:
             return None
         with get_http_client(timeout=settings.AI_HTTP_TIMEOUT_SECONDS) as client:
@@ -104,7 +126,12 @@ class SiteChecker:
             try:
                 final_url = str(response.url)
                 if response.status_code in REFUSALS:
-                    return SiteCheck(url=final_url, blocked=True, checked_at=self._date())
+                    return SiteCheck(
+                        url=final_url,
+                        blocked=True,
+                        problem=f"it refuses automated visitors (HTTP {response.status_code})",
+                        checked_at=self._date(),
+                    )
                 status = response.status_code
                 if status >= 400:
                     return self._down(final_url, f"it returns an error (HTTP {status})")
@@ -122,6 +149,16 @@ class SiteChecker:
             finally:
                 response.close()
         return final_url, body[:MAX_PAGE_BYTES].decode(encoding, errors="replace")
+
+    def _render(self, url: str, before_render) -> SiteVisit | None:
+        if self.renderer is None or (before_render is not None and not before_render(url)):
+            return None
+        page = self.renderer.render(url)
+        if page is None or (page.status is not None and page.status >= 400):
+            return None
+        visit = self._read(page.url, page.html)
+        visit.check.read_by = page.by
+        return visit
 
     def _read(self, final_url: str, html: str) -> SiteVisit:
         facts = self._facts(final_url, html)

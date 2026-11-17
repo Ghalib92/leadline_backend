@@ -283,6 +283,16 @@ AI_MODEL_TIERS = {
     "answer": config("ANSWER_MODEL", default=""),
 }
 GROQ_API_KEY = config("GROQ_API_KEY", default="")
+# Fallback provider: calls the primary refuses for its rate limit, or can't answer,
+# go to this provider's model for the same tier. Empty AI_FALLBACK_PROVIDER = no
+# fallback. Gemini's free tier has its own daily limits, separate from Groq's.
+AI_FALLBACK_PROVIDER = config("AI_FALLBACK_PROVIDER", default="")
+AI_FALLBACK_TIERS = {
+    "light": config("FALLBACK_LIGHT_MODEL", default=""),
+    "research": config("FALLBACK_RESEARCH_MODEL", default=""),
+    "answer": config("FALLBACK_ANSWER_MODEL", default=""),
+}
+GEMINI_API_KEY = config("GEMINI_API_KEY", default="")
 
 # Agent tools. Tavily is the web search provider; its dev plan allows 100 requests a
 # minute, so stay below that (the limit is shared through the cache).
@@ -297,6 +307,10 @@ APIFY_GOOGLE_MAPS_ENABLED = config("APIFY_GOOGLE_MAPS_ENABLED", cast=bool, defau
 # Cloud (about 25,000 checks a day); without one the speed check is skipped, because
 # Google's shared keyless quota is used up.
 PAGESPEED_API_KEY = config("PAGESPEED_API_KEY", default="")
+# Rendering services for leads' websites that a plain fetch can't read (sites built
+# by JavaScript, or that refuse simple clients). Jina works without a key at a low rate.
+JINA_API_KEY = config("JINA_API_KEY", default="")
+FIRECRAWL_API_KEY = config("FIRECRAWL_API_KEY", default="")
 # Identifies our requests. Add your site once you have a domain, e.g.
 # "LeadlineBot/0.1 (+https://yourdomain.com)"; OpenStreetMap refuses placeholder
 # domains such as example.com (HTTP 406).

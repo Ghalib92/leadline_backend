@@ -272,6 +272,16 @@ clients:
              chatbase, chatbot, landbot, voiceflow]
       payments: [paystack, flutterwave, stripe, pesapal, ipay, dpopay, 3gdirectpay,
                  checkout, woocommerce, shopify, mpesa express, stk push]
+    # Rendering services for pages a plain fetch can't read (sites that refuse simple
+    # clients or time out, and pages built by JavaScript), tried in order. Jina Reader
+    # (JINA_API_KEY; works without one at a low rate), then Firecrawl (FIRECRAWL_API_KEY,
+    # uses credits). Never used when a site's robots.txt keeps us out.
+    renderers: [jina, firecrawl]
+    # A page with less visible text than this is rendered, as JavaScript builds it.
+    render_below_chars: 300
+    # Hunter.io email lookups per run, for leads whose website shows no email. The free
+    # plan has 50 a month (HUNTER_API_KEY); 0 turns it off.
+    hunter_per_run: 5
     # Text that shows a placeholder instead of a website (counts as broken).
     placeholder_words: [domain is for sale, buy this domain, domain may be for sale,
                         coming soon, under construction, account suspended,

@@ -59,7 +59,12 @@ def generate_dossier(inputs: dict, *, emitter: RunEventEmitter | None = None) ->
     )
     emitter.emit(RunEvent(step="profile", message="Company dossier ready", tool="dossier"))
     return DossierResult(
-        dossier=result.output, prompt_id=prompt.id, model=resolved.model, usage=result.usage
+        dossier=result.output,
+        prompt_id=prompt.id,
+        model=resolved.model
+        if result.model in ("", resolved.model)
+        else f"{resolved.model} + {result.model}",
+        usage=result.usage,
     )
 
 

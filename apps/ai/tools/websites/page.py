@@ -39,6 +39,7 @@ class PageFacts:
     emails: list[str] = field(default_factory=list)
     socials: dict[str, str] = field(default_factory=dict)  # kind → profile URL
     contact_links: list[str] = field(default_factory=list)  # same-site contact pages
+    text_chars: int = 0  # visible text; very little means the page is built by JavaScript
 
 
 def read_page(
@@ -66,6 +67,7 @@ def read_page(
     for bad in tree.xpath("//script|//style|//noscript"):
         bad.text = ""  # their code is not the page's text (the HTML was searched above)
     text = " ".join(tree.text_content().split())
+    facts.text_chars = len(text)
     facts.viewport = any(
         "width=device-width" in (meta.get("content") or "").lower()
         for meta in tree.xpath("//meta[@name]")

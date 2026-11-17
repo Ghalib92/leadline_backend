@@ -62,6 +62,9 @@ class SiteCheck(BaseModel):
     slow: bool = False  # mobile_speed below slow_below
     stale: bool = False  # copyright_year at least stale_after_years old
     checked_at: str = ""  # ISO date
+    # A rendering service that read the page for us (sites built by JavaScript or that
+    # refuse simple clients), e.g. "Jina Reader"; "" when we read it ourselves.
+    read_by: str = ""
 
     @property
     def readable(self) -> bool:

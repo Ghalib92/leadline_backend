@@ -196,6 +196,12 @@ class LookupSettings(BaseModel):
     generic_name_words: list[str] = []
     features: SiteFeatures = SiteFeatures()
     placeholder_words: list[str] = []
+    # Rendering services for pages a plain fetch can't read, in order ("jina",
+    # "firecrawl"), and the visible text below which a page counts as built by JavaScript.
+    renderers: list[Literal["jina", "firecrawl"]] = []
+    render_below_chars: int = Field(default=300, ge=0)
+    # Hunter.io email lookups per run, for leads whose website shows no email (0 = none).
+    hunter_per_run: int = Field(default=0, ge=0, le=50)
 
     @model_validator(mode="after")
     def every_depth_has_leads(self):

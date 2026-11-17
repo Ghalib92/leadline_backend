@@ -376,3 +376,106 @@ def test_a_slow_site_is_not_called_down(web):
     assert check.blocked is True
     assert check.problem == "it didn't load within 20 seconds"
     assert check.signals() == []
+
+
+# ---------------------------------------------------------------------------
+# Renderers: pages a plain fetch can't read (stage 6)
+# ---------------------------------------------------------------------------
+
+
+def jina_reply(html, *, url="https://kilima.co.ke/", status=200):
+    data = {"data": {"html": html, "finalUrl": url, "httpStatus": status}}
+    return httpx.Response(200, json=data)
+
+
+def test_jina_renders_a_page(web, settings):
+    from apps.ai.tools.fetch.renderers import JinaRenderer
+
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return jina_reply(OLD_SITE)
+
+    web.route("r.jina.ai", "", handler)
+    page = JinaRenderer(api_key="jk").render("https://kilima.co.ke/")
+    assert page.html == OLD_SITE and page.by == "Jina Reader" and page.status == 200
+    assert seen[0].url.path == "/https://kilima.co.ke/"
+    assert seen[0].headers["Authorization"] == "Bearer jk"
+    assert seen[0].headers["X-Return-Format"] == "html"
+
+
+def test_firecrawl_backs_up_jina(web):
+    from apps.ai.tools.fetch.renderers import FirecrawlRenderer, JinaRenderer, RendererChain
+
+    web.route("r.jina.ai", "", lambda r: httpx.Response(429, json={}))
+    web.route(
+        "api.firecrawl.dev",
+        "/v2/scrape",
+        lambda r: httpx.Response(
+            200,
+            json={
+                "success": True,
+                "data": {"rawHtml": OLD_SITE, "metadata": {"statusCode": 200}},
+            },
+        ),
+    )
+    chain = RendererChain([JinaRenderer(), FirecrawlRenderer(api_key="fk")])
+    page = chain.render("https://kilima.co.ke/")
+    assert page.by == "Firecrawl" and page.html == OLD_SITE
+
+
+def test_renderers_never_open_private_addresses(web, monkeypatch):
+    from apps.ai.tools.fetch.renderers import JinaRenderer, RendererChain
+
+    monkeypatch.setattr(http, "resolve_host", lambda host: ["10.0.0.5"])
+    assert RendererChain([JinaRenderer()]).render("https://intranet.example/") is None
+    assert web.count("r.jina.ai") == 0
+
+
+def rendering_checker():
+    from apps.ai.tools.fetch.renderers import JinaRenderer, RendererChain
+
+    return SiteChecker(LOOKUP, today=TODAY, renderer=RendererChain([JinaRenderer()]))
+
+
+def test_a_site_refusing_simple_clients_is_read_through_a_renderer(web):
+    serve(web, "kilima.co.ke", "denied", status=403)
+    web.route("r.jina.ai", "", lambda r: jina_reply(OLD_SITE))
+    visit = rendering_checker().visit("https://kilima.co.ke/")
+    assert visit.check.blocked is False
+    assert visit.check.read_by == "Jina Reader"
+    assert visit.check.copyright_year == 2017
+    assert visit.page.phones == ["0722 123 456"]
+
+
+def test_a_page_built_by_javascript_is_rendered(web):
+    shell = (
+        '<html><head></head><body><div id="root"></div>'
+        '<script src="/app.js"></script></body></html>'
+    )
+    serve(web, "kilima.co.ke", shell)
+    web.route("r.jina.ai", "", lambda r: jina_reply(OLD_SITE))
+    visit = rendering_checker().visit("https://kilima.co.ke/")
+    assert visit.check.read_by == "Jina Reader"
+    assert visit.page.emails == ["info@kilima.co.ke"]
+
+
+def test_robots_txt_still_keeps_renderers_out(web):
+    serve(web, "kilima.co.ke", OLD_SITE, robots="User-agent: *\nDisallow: /")
+    check = rendering_checker().visit("https://kilima.co.ke/").check
+    assert check.blocked is True
+    assert web.count("r.jina.ai") == 0
+
+
+def test_rendering_waits_for_the_budget(web):
+    serve(web, "kilima.co.ke", "denied", status=403)
+    check = rendering_checker().visit("https://kilima.co.ke/", before_render=lambda url: False)
+    assert check.check.blocked is True
+    assert web.count("r.jina.ai") == 0
+
+
+def test_a_rendered_error_page_is_not_read(web):
+    serve(web, "kilima.co.ke", "denied", status=403)
+    web.route("r.jina.ai", "", lambda r: jina_reply("Not found", status=404))
+    assert rendering_checker().visit("https://kilima.co.ke/").check.blocked is True

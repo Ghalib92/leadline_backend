@@ -20,13 +20,11 @@ def hunter_enabled() -> bool:
     return bool(settings.HUNTER_API_KEY)
 
 
-def domain_search(domain: str, *, limit: int = 10) -> list[dict]:
-    params = {
-        "domain": domain,
-        "limit": limit,
-        "type": "personal",
-        "api_key": settings.HUNTER_API_KEY,
-    }
+def domain_search(domain: str, *, limit: int = 10, kind: str | None = "personal") -> list[dict]:
+    """`kind`: "personal" (people), "generic" (info@, bookings@) or None for both."""
+    params = {"domain": domain, "limit": limit, "api_key": settings.HUNTER_API_KEY}
+    if kind:
+        params["type"] = kind
     try:
         with get_http_client(timeout=20) as client:
             response = client.get(ENDPOINT, params=params)

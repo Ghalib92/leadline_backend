@@ -239,3 +239,35 @@ def test_client_runs_get_the_lookups_in_their_budget(depth):
     assert budget["max_searches"] == base["max_searches"] + leads
     assert budget["max_pages"] == base["max_pages"] + leads * config.clients.lookup.pages_per_lead
     assert budget["max_tokens"] == base["max_tokens"]
+
+
+def test_hunter_finds_an_email_the_site_doesnt_show(judge, web, settings):
+    settings.HUNTER_API_KEY = "hk"
+    home = "<html><body><p>Rooms and suites in Westlands.</p></body></html>" * 20
+    serve(web, "kilima.co.ke", home)
+    serve(web, "baobab.co.ke", home)
+    calls = []
+
+    def hunter(request):
+        calls.append(dict(request.url.params))
+        emails = [
+            {"value": "jane@x.co.ke", "first_name": "Jane", "confidence": 99},
+            {"value": "info@x.co.ke", "confidence": 80},
+        ]
+        return httpx.Response(200, json={"data": {"emails": emails}})
+
+    web.route("api.hunter.io", "/v2/domain-search", hunter)
+    directory = osm(
+        biz("Kilima Guest House", website="https://kilima.co.ke"),
+        biz("Baobab Inn", website="https://baobab.co.ke"),
+    )
+    lookup_tools = tools()
+    lookup_tools.hunter_left = 1  # one lookup left this run
+    outcome, emitter, sink = run(request(), [directory], tools=lookup_tools)
+
+    assert len(calls) == 1
+    assert "type" not in calls[0]  # people and team inboxes
+    with_email = [lead.business for lead in sink.saved if lead.business.get("email")]
+    assert len(with_email) == 1
+    assert with_email[0]["email"] == "info@x.co.ke"  # the team inbox first
+    assert with_email[0]["found_on"] == {"email": "Hunter"}
