@@ -132,3 +132,56 @@ def test_a_placeholder_domain_in_the_user_agent_is_flagged(settings):
     assert "discovery.W006" in {message.id for message in run_checks()}
     settings.AI_HTTP_USER_AGENT = "LeadlineBot/0.1"
     assert "discovery.W006" not in {message.id for message in run_checks()}
+
+
+def test_a_worker_narrows_the_brief_to_its_own_customers_and_places(auth_client, user, clients_org):
+    """A "Hotels in Nairobi" worker searches hotels in Nairobi, not the whole brief."""
+    create = auth_client.post(
+        discovery_url("agents", clients_org),
+        {
+            "name": "Hotels in Nairobi",
+            "goal": "clients",
+            "customer_types": ["hospitality", "hospitality"],
+            "places": [" Nairobi ", ""],
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.data
+    assert create.data["customer_types"] == ["hospitality"]
+    assert create.data["places"] == ["Nairobi"]
+
+    with mock.patch(
+        "apps.discovery.tasks.selectors.client_search_plan",
+        wraps=selectors.client_search_plan,
+    ) as plan:
+        response = auth_client.post(
+            discovery_url("agent-run", clients_org, agent_id=create.data["id"])
+        )
+    run = DiscoveryRun.objects.get(pk=response.data["id"])
+    assert run.config["client_focus"] == {"customer_types": ["hospitality"], "places": ["Nairobi"]}
+    assert plan.call_args.args[1] == run.config["client_focus"]
+    assert selectors.client_search_plan(clients_org, run.config["client_focus"])["places"] == [
+        "Nairobi"
+    ]
+
+
+def test_an_empty_focus_uses_the_brief_and_other_goals_have_none(auth_client, user, clients_org):
+    assert selectors.client_search_plan(clients_org, {"customer_types": [], "places": []})[
+        "places"
+    ] == ["Nairobi", "Mombasa"]
+    organization_services.update_organization(
+        organization_id=clients_org.pk, actor=user, goals=["clients", "tenders"]
+    )
+    response = auth_client.post(
+        discovery_url("agents", clients_org),
+        {"name": "Tenders", "goal": "tenders", "places": ["Nairobi"]},
+        format="json",
+    )
+    assert response.status_code == 201, response.data
+    assert response.data["places"] == []  # only a client search has places
+    bad = auth_client.post(
+        discovery_url("agents", clients_org),
+        {"name": "Bad", "goal": "clients", "customer_types": ["spaceships"]},
+        format="json",
+    )
+    assert bad.status_code == 400

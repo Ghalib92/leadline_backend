@@ -99,3 +99,20 @@ def test_the_latest_judge_sees_past_decisions_and_v1_does_not(monkeypatch, setti
     judge_fit(pinned, {"title": "Bridge tender"}, decisions)
     assert "Road tender" not in models["judge"].calls[0]  # a new runtime builds a new model
     assert pinned.prompt_versions == {"judge": "judge/v1"}
+
+
+def test_client_lead_decisions_stay_out_of_the_judges_memory(auth_client, organization):
+    """Approving a school as a client lead says nothing about bidding on a tender."""
+    review(
+        auth_client,
+        organization,
+        title="Upendo school portal",
+        decision="approve",
+        opportunity_type="client",
+        business={"name": "Upendo School"},
+    )
+    facts = {"title": "School portal tender"}
+    assert past_decisions(organization.pk, facts) == []
+    assert [d["title"] for d in past_decisions(organization.pk, facts, client_leads=True)] == [
+        "Upendo school portal"
+    ]

@@ -43,6 +43,8 @@ STOPWORDS = {
 
 class PPIPSource:
     domain = "tenders.go.ke"
+    # Each result is the whole tender record; reading it fetches nothing.
+    complete_listings = True
 
     def __init__(self, name: str = "kenya_ppip", *, options: dict | None = None):
         self.name = name

@@ -87,9 +87,9 @@ def fallback_plan(runtime, *, done: list[str], limit: int) -> list[tuple[str, st
     topics = topics or [request.agent_name]
     us_eligible = is_us_eligible(request.profile)
     # Exclude grants_gov from fallback queries for non-US organizations
-    available_sources = [
-        s for s in runtime.sources if s != "grants_gov" or us_eligible
-    ] or list(runtime.sources)
+    available_sources = [s for s in runtime.sources if s != "grants_gov" or us_eligible] or list(
+        runtime.sources
+    )
     pairs, seen = [], set(done)
     for topic in topics:
         for source in available_sources:

@@ -215,8 +215,27 @@ def test_running_out_of_tokens_keeps_written_sections(
     assert result.review is None
 
 
-def test_outline_failure_stops_with_a_warning(monkeypatch, settings, organization, call_page):
+def test_outline_failure_follows_the_calls_own_sections(
+    monkeypatch, settings, organization, call_page
+):
     scripted(monkeypatch, settings, proposal_outline=lambda prompt: "not json")
+    emitter = ListEmitter()
+    result = GraphProposalWriter().draft(request(organization), emitter)
+    assert result.status == "complete"  # a note, not a partial draft
+    assert [s["title"] for s in result.sections] == ["Problem statement", "Approach"]
+    assert result.sections[0]["target_words"] == 300 and result.sections[0]["drafted"]
+    assert any("follow the call's own list" in e.message for e in emitter.events)
+
+
+def test_outline_failure_without_listed_sections_stops(
+    monkeypatch, settings, organization, call_page
+):
+    scripted(
+        monkeypatch,
+        settings,
+        proposal_requirements=lambda prompt: {"summary": "No sections listed."},
+        proposal_outline=lambda prompt: "not json",
+    )
     result = GraphProposalWriter().draft(request(organization), ListEmitter())
     assert result.status == "partial" and result.sections == []
     assert result.warning == "The outline failed."

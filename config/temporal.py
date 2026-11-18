@@ -56,6 +56,22 @@ def every(interval: timedelta) -> ScheduleSpec:
     return ScheduleSpec(intervals=[ScheduleIntervalSpec(every=interval)])
 
 
+def weekly_at(weekday: int, hour: int) -> ScheduleSpec:
+    """Every week on `weekday` (0 = Monday) at `hour`:00, Nairobi time. Temporal counts
+    days of the week from Sunday = 0."""
+    return ScheduleSpec(
+        calendars=[
+            ScheduleCalendarSpec(
+                day_of_week=[ScheduleRange((weekday + 1) % 7)],
+                hour=[ScheduleRange(hour)],
+                minute=[ScheduleRange(0)],
+                second=[ScheduleRange(0)],
+            )
+        ],
+        time_zone_name=settings.TIME_ZONE,
+    )
+
+
 def daily_at(hour: int) -> ScheduleSpec:
     """Every day at `hour`:00 in the server's time zone (TIME_ZONE, Nairobi)."""
     return ScheduleSpec(
@@ -72,6 +88,7 @@ def timers() -> dict[str, Timer]:
     """Schedule id → what it starts and when. Each start's workflow id is the schedule id
     plus its time, so Temporal never starts the same tick twice."""
     reminders = registered_jobs()["outreach.send_deadline_reminders"]
+    digests = registered_jobs()["outreach.send_weekly_digests"]
     return {
         # Daily and weekly saved searches that are due.
         "discovery-scheduled-searches": Timer(
@@ -83,6 +100,8 @@ def timers() -> dict[str, Timer]:
         ),
         # Deadline reminder emails.
         "outreach-deadline-reminders": Timer(JobWorkflow.run, daily_at(7), reminders.input([])),
+        # The weekly digest email, Monday morning.
+        "outreach-weekly-digest": Timer(JobWorkflow.run, weekly_at(0, 7), digests.input([])),
     }
 
 

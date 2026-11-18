@@ -195,6 +195,8 @@ class DeadlineSerializer(serializers.Serializer):
 
 class ReminderPreferenceSerializer(serializers.Serializer):
     enabled = serializers.BooleanField(required=False)
+    # The Monday summary email (new matches, what's closing, follow-ups due).
+    weekly_digest = serializers.BooleanField(required=False)
     days_before = serializers.ListField(
         child=serializers.IntegerField(min_value=1, max_value=MAX_REMINDER_DAYS),
         max_length=5,

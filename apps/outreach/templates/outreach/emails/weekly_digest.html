@@ -1,0 +1,56 @@
+{% extends "common/emails/base.html" %}
+
+{% block title %}
+Your week at {{ organization_name }}
+{% endblock title %}
+
+{% block preheader %}
+{% if found_total %}{{ found_summary }} found this week.{% else %}What's closing and who to call back.{% endif %}
+{% endblock preheader %}
+
+{% block content %}
+
+<p style="margin:0 0 8px;color:#087b87;font-size:12px;font-weight:bold;letter-spacing:1px;">YOUR WEEK</p>
+<h1 style="margin:0 0 20px;color:#172b4d;font-size:26px;line-height:33px;">{{ organization_name }}</h1>
+<p>Hi {{ recipient_name }},</p>
+
+{% if top %}
+<p><strong>Found this week:</strong> {{ found_summary }}. The best:</p>
+<ul style="padding-left:20px;margin:0 0 16px;">
+{% for item in top %}
+  <li style="margin-bottom:8px;"><a href="{{ item.url }}" style="color:#087b87;">{{ item.title }}</a><br><span style="font-size:14px;color:#526279;">{{ item.detail }}</span></li>
+{% endfor %}
+</ul>
+{% endif %}
+
+{% if to_review %}
+<p>{{ to_review }} waiting for you to approve or reject. <a href="{{ review_url }}" style="color:#087b87;">Review them</a>.</p>
+{% endif %}
+
+{% if closing %}
+<p><strong>Closing soon</strong> (approved):</p>
+<ul style="padding-left:20px;margin:0 0 16px;">
+{% for item in closing %}
+  <li style="margin-bottom:8px;"><a href="{{ item.url }}" style="color:#087b87;">{{ item.title }}</a> closes {{ item.when }}{% if item.note %}<br><span style="font-size:14px;color:#b42318;">{{ item.note }}</span>{% endif %}</li>
+{% endfor %}
+</ul>
+{% endif %}
+
+{% if follow_ups %}
+<p><strong>Call back:</strong></p>
+<ul style="padding-left:20px;margin:0 0 16px;">
+{% for item in follow_ups %}
+  <li style="margin-bottom:6px;"><a href="{{ item.url }}" style="color:#087b87;">{{ item.title }}</a>, {{ item.when }}</li>
+{% endfor %}
+</ul>
+{% endif %}
+
+{% with button_url=calls_url button_label="Open Leadline" %}
+
+{% include "common/emails/button.html" %}
+
+{% endwith %}
+
+<p style="font-size:13px;color:#526279;">You get this every Monday as a member of {{ organization_name }}. Turn it off under Deadlines › Email reminders.</p>
+
+{% endblock content %}

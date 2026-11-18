@@ -13,6 +13,7 @@ from apps.ai.graphs.budget import BudgetExhausted
 from apps.ai.schemas.proposal import (
     BidChecklist,
     DraftedSection,
+    OutlineSection,
     ProposalOutline,
     ProposalRequirements,
     ProposalReview,
@@ -442,10 +443,19 @@ def outline(runtime, state: ProposalState) -> ProposalState:
             organization=escape(runtime.organization_brief(), quote=False),
             requirements=_dump(writing_requirements(state["requirements"])),
         )
-    except (StructuredOutputError, BudgetExhausted) as exc:
-        message = str(exc) if isinstance(exc, BudgetExhausted) else "The outline failed."
-        runtime.warn("outline", message)
-        return {"sections": [], "stop": message}
+    except BudgetExhausted as exc:
+        runtime.warn("outline", str(exc))
+        return {"sections": [], "stop": str(exc)}
+    except StructuredOutputError:
+        plan = _outline_from_requirements(state["requirements"])
+        if plan is None:
+            runtime.warn("outline", "The outline failed.")
+            return {"sections": [], "stop": "The outline failed."}
+        runtime.warn(
+            "outline",
+            "The AI couldn't plan the sections, so they follow the call's own list.",
+            partial=False,
+        )
     sections, seen = [], set()
     for item in plan.sections[: settings.max_sections]:
         key = _KEY.sub("_", item.key.lower()).strip("_")[:40] or f"section_{len(sections) + 1}"
@@ -470,6 +480,25 @@ def outline(runtime, state: ProposalState) -> ProposalState:
         data={"sections": [s["title"] for s in sections]},
     )
     return {"sections": sections}
+
+
+def _outline_from_requirements(requirements: dict) -> ProposalOutline | None:
+    """The call's own sections as the plan, when the outline step fails."""
+    required = (requirements or {}).get("sections") or []
+    if not required:
+        return None
+    return ProposalOutline(
+        sections=[
+            OutlineSection(
+                key=_KEY.sub("_", item["title"].lower()).strip("_")[:40] or "section",
+                title=item["title"],
+                purpose=item.get("guidance", ""),
+                evidence_query=item["title"],
+                target_words=item.get("word_limit") or 0,
+            )
+            for item in required
+        ]
+    )
 
 
 def evidence(runtime, state: ProposalState) -> ProposalState:

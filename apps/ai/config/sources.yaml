@@ -42,6 +42,9 @@ discovery:
   results_per_search: 8
   # Leads the researcher may send to the verifier per round.
   max_leads_per_round: 15
+  # Results from official tender portals (whole records, nothing to fetch) are all
+  # read, up to this many per round, without taking the researcher's picks.
+  max_portal_reads_per_round: 12
   # Page text sent to the verifier is cut to this many characters.
   max_page_chars: 12000
   # Pages read and scored in parallel. Keep it low on Groq's free tier.

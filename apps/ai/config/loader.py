@@ -137,6 +137,8 @@ class DiscoverySettings(BaseModel):
     target_results: int = Field(default=5, ge=1)
     results_per_search: int = Field(default=8, ge=1, le=20)
     max_leads_per_round: int = Field(default=15, ge=1)
+    # Results from official portals (complete records) read per round, on top.
+    max_portal_reads_per_round: int = Field(default=12, ge=0)
     max_page_chars: int = Field(default=12000, ge=1000)
     max_concurrency: int = Field(default=4, ge=1, le=16)
     # Similar past decisions shown to the judge (judge/v2 and later).

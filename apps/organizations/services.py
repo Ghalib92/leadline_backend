@@ -100,6 +100,9 @@ def _context_changed(organization):
     context_changed.send(sender=Organization, organization_id=organization.pk)
 
 
+DEFAULT_FOLDER = "Company documents"
+
+
 @transaction.atomic
 def create_organization(*, actor, invitations=(), **data):
     """Create the organization with `actor` as its first admin.
@@ -112,6 +115,13 @@ def create_organization(*, actor, invitations=(), **data):
     organization = Organization.objects.create(created_by=actor, **data)
     OrganizationMembership.objects.create(organization=organization, user=actor, role="admin")
     OpportunityPreferences.objects.create(organization=organization)
+    # A folder to upload into from the start (documents always live in a folder).
+    KnowledgeFolder.objects.create(
+        organization=organization,
+        name=DEFAULT_FOLDER,
+        purpose="Company profile, registration and tax certificates, CVs and past work.",
+        created_by=actor,
+    )
     _event(organization, actor, "organization.created")
     _invite_many(organization, actor, invitations)
     schedule_notification(

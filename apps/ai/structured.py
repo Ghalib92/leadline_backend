@@ -11,6 +11,7 @@ import logging
 from dataclasses import dataclass
 
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 
 from apps.ai.exceptions import AIConfigError, RequestTooLarge, StructuredOutputError
@@ -35,13 +36,21 @@ def invoke_structured[T: BaseModel](
     method: str | None = None,
 ) -> StructuredResult[T]:
     """`method` is the role's `structured_output` setting (models.yaml)."""
+    if isinstance(messages, str):
+        messages = [HumanMessage(messages)]
     options = {"method": method} if method else {}
     runnable = model.with_structured_output(schema, include_raw=True, **options)
     error = None
+    last_answer = ""  # the text of the last unusable answer, for the correction
     usage: dict = {}
     for attempt in range(1, attempts + 1):
+        # A retry says what went wrong: asking the same again repeats the same mistake
+        # (gpt-oss sometimes answers with the JSON schema itself, not the data).
+        attempt_messages = (
+            [*messages, _correction(error, last_answer)] if _bad_answer(error) else messages
+        )
         try:
-            result = runnable.invoke(messages, config=config)
+            result = runnable.invoke(attempt_messages, config=config)
         except AIConfigError:
             raise
         except RequestTooLarge as exc:  # the same request again can't fit either
@@ -60,10 +69,31 @@ def invoke_structured[T: BaseModel](
                 output=parsed, usage=usage, model=str(metadata.get("model_name") or "")
             )
         error = result.get("parsing_error") or ValueError("The model returned no output.")
+        last_answer = str(getattr(result.get("raw"), "content", "") or "")
         _log_failure(schema, attempt, attempts, error, raw=result.get("raw"))
     raise StructuredOutputError(
         f"No valid {schema.__name__} after {attempts} attempts: {error}", usage=usage
     ) from error
+
+
+def _bad_answer(error) -> bool:
+    """The model answered, but not in the required form (not a rate limit or outage)."""
+    if error is None:
+        return False
+    status = getattr(error, "status_code", None)
+    return status == 400 or (status is None and "RateLimit" not in type(error).__name__)
+
+
+def _correction(error, answer: str = "") -> HumanMessage:
+    text = f"{error} {answer}"
+    if '"properties"' in text and '"description"' in text:
+        problem = "you returned the JSON schema itself instead of the data"
+    else:
+        problem = f"it did not match the required format ({str(error)[:300]})"
+    return HumanMessage(
+        f"Your previous answer could not be used: {problem}. Answer again with only "
+        "the JSON object that fills in the fields, following the rules above."
+    )
 
 
 def _log_failure(schema, attempt, attempts, error, raw=None) -> None:

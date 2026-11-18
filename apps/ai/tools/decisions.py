@@ -12,14 +12,23 @@ from apps.opportunities.selectors import similar_decisions
 
 
 def past_decisions(
-    organization_id, facts: dict, *, limit=4, exclude_opportunity_id=None, before=None
+    organization_id,
+    facts: dict,
+    *,
+    limit=4,
+    exclude_opportunity_id=None,
+    before=None,
+    client_leads=False,
 ) -> list[dict]:
+    """Similar past decisions; client leads only when asked for (the judges of grants
+    and tenders must not learn from which businesses were worth calling)."""
     reviews = similar_decisions(
         organization_id,
         embed_facts(facts),
         limit=limit,
         exclude_opportunity_id=exclude_opportunity_id,
         before=before,
+        client_leads=client_leads,
     )
     return [
         {

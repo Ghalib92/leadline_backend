@@ -426,7 +426,7 @@ class ReminderPreferenceView(OutreachAPIView):
             actor=request.user,
             **self.validated(ReminderPreferenceSerializer),
         )
-        data = {"enabled": preference.enabled, "days_before": preference.days_before}
+        data = selectors.reminder_preference(preference.organization, request.user)
         return Response(ReminderPreferenceSerializer(data).data)
 
 

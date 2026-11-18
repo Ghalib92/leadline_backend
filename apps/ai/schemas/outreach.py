@@ -52,7 +52,7 @@ class LeadPitchDraft(BaseModel):
             "A WhatsApp message to the business, under 80 words: a greeting, who we are in "
             "a few words, one specific thing we noticed about them (from their evidence), "
             "what we could do about it, and one easy ask (a short call or a quick demo). "
-            "Plain text, no markdown. End with [Your name] and the organization's name."
+            "Plain text, no markdown. End with the sender's name and the organization's name."
         )
     )
     email_subject: str = Field(
@@ -61,8 +61,8 @@ class LeadPitchDraft(BaseModel):
     email_body: str = Field(
         description=(
             "Plain-text email, greeting to sign-off, under 150 words, with the same "
-            "observation and ask as the WhatsApp message. Sign off with [Your name], "
-            "[Your role] and the organization's name."
+            "observation and ask as the WhatsApp message. Sign off with the sender's name "
+            "and the organization's name."
         )
     )
     call_points: list[str] = Field(

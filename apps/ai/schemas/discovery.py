@@ -163,7 +163,11 @@ class EligibilityCheckItem(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     criterion: str = Field(description="Eligibility requirement (e.g. 'Registered NGO in Kenya').")
-    meets: bool = Field(description="Whether the organization appears to meet this requirement.")
+    # Missing (models sometimes misspell the key) reads as "not shown to meet it": one
+    # slip shouldn't discard the whole brief, and claiming a fit would be worse.
+    meets: bool = Field(
+        default=False, description="Whether the organization appears to meet this requirement."
+    )
     notes: str = Field(default="", description="Reason or supporting evidence.")
 
 

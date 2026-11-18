@@ -37,6 +37,10 @@ class SearchAgent(UUIDTimestampedModel):
     sources = models.JSONField(default=list, blank=True)  # SourceCategory values
     folders = models.ManyToManyField("organizations.KnowledgeFolder", blank=True, related_name="+")
     depth = models.CharField(max_length=10, choices=RunDepth.choices, blank=True, default="")
+    # Clients workers: the kinds of customer (BusinessCategory values) and places this
+    # worker searches, narrowing the clients brief. Empty uses the brief's.
+    customer_types = models.JSONField(default=list, blank=True)
+    places = models.JSONField(default=list, blank=True)
     # Websites this agent also reads, on top of the organization's sources:
     # [{"url", "label", "notes", "enabled"}].
     links = models.JSONField(default=list, blank=True)

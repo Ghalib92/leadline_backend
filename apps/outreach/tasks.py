@@ -131,7 +131,12 @@ def write_lead_pitch(pitch_id):
     try:
         budget = Budget(load_outreach_file().pitch_writer.budget.model_dump())
         runtime = TaskRuntime(budget=budget, **inputs["organization"])
-        draft = write_pitch(runtime, lead=inputs["lead"], instructions=pitch.instructions)
+        draft = write_pitch(
+            runtime,
+            lead=inputs["lead"],
+            instructions=pitch.instructions,
+            sender=inputs["sender"],
+        )
     except AIConfigError as exc:
         logger.error("Pitch %s cannot be written: %s", pitch_id, exc)
         services.fail_pitch(pitch_id, started_at, NOT_CONFIGURED)
@@ -237,6 +242,55 @@ def send_deadline_reminders():
             continue  # already sent (another worker, or a rerun)
         except Exception:
             logger.exception("Deadline reminder for %s failed", opportunity.pk)
+
+
+@job("outreach.send_weekly_digests", timeout=timedelta(minutes=30))
+def send_weekly_digests():
+    """Monday morning (a Temporal Schedule): each member's summary of the week, per
+    organization. Sent once per week (DigestLog is unique, so a retry skips those
+    already sent); a week with nothing to tell sends nothing."""
+    from apps.common.emails import send_templated_email
+    from apps.organizations.models import Organization, OrganizationMembership
+
+    from .digest import digest_for
+    from .models import DigestLog
+
+    today = timezone.localdate()
+    organizations = Organization.objects.filter(archived_at__isnull=True).order_by("id")
+    for organization in organizations:
+        try:
+            content = digest_for(organization, today)
+        except Exception:
+            logger.exception("Weekly digest for %s failed", organization.pk)
+            continue
+        if content is None:
+            continue
+        members = organization.memberships.filter(
+            status=OrganizationMembership.Status.ACTIVE, user__is_active=True
+        ).select_related("user")
+        for membership in members:
+            user = membership.user
+            if not selectors.reminder_preference(organization, user)["weekly_digest"]:
+                continue
+            try:
+                with transaction.atomic():
+                    DigestLog.objects.create(organization=organization, user=user, week=today)
+                    send_templated_email(
+                        to=user.email,
+                        subject=f"Your week at {organization.name} | {settings.PRODUCT_NAME}",
+                        template="outreach/emails/weekly_digest",
+                        context={**content, "recipient_name": _first_name(user)},
+                    )
+            except IntegrityError:
+                continue  # already sent this week
+            except Exception:
+                logger.exception("Weekly digest to %s failed", user.pk)
+
+
+def _first_name(user) -> str:
+    """The first name, or "there" (never the email address)."""
+    name = user.get_short_name() or ""
+    return "there" if not name or "@" in name else name
 
 
 def _when(days: int) -> str:

@@ -100,7 +100,11 @@ def test_one_opportunity_calendar_file(member_client, organization, opportunity)
 
 def test_reminder_preferences(member_client, organization, member):
     path = url("reminders", organization)
-    assert member_client.get(path).data == {"enabled": True, "days_before": [14, 3, 1]}
+    assert member_client.get(path).data == {
+        "enabled": True,
+        "days_before": [14, 3, 1],
+        "weekly_digest": True,
+    }
 
     response = member_client.patch(path, {"days_before": [1, 7, 7]}, format="json")
     assert response.status_code == 200 and response.data["days_before"] == [7, 1]
@@ -108,7 +112,11 @@ def test_reminder_preferences(member_client, organization, member):
     assert member_client.patch(path, {"days_before": [99]}, format="json").status_code == 400
 
     member_client.patch(path, {"enabled": False}, format="json")
-    assert member_client.get(path).data == {"enabled": False, "days_before": [7, 1]}
+    assert member_client.get(path).data == {
+        "enabled": False,
+        "days_before": [7, 1],
+        "weekly_digest": True,
+    }
     assert ReminderPreference.objects.get(user=member).days_before == [7, 1]
 
 

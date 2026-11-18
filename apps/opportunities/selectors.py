@@ -7,6 +7,7 @@ from django.db.models.functions import TruncWeek
 from django.utils import timezone
 
 from apps.discovery.models import DiscoveryRun, SearchAgent
+from apps.organizations.choices import OpportunityType
 from apps.organizations.selectors import setup_status
 
 from .choices import ACTIVE_PIPELINE_STATUSES, CLOSED_STATUSES, ReviewDecision
@@ -249,15 +250,19 @@ def similar_decisions(
     limit=4,
     exclude_opportunity_id=None,
     before=None,
+    client_leads=True,
 ) -> list[OpportunityReview]:
     """The organization's past decisions closest to `vector`: one per opportunity (its
     latest review), nearest first. `before` limits to reviews made earlier (evals use
-    it so a case never sees its own or later decisions)."""
+    it so a case never sees its own or later decisions). `client_leads=False` leaves
+    out decisions on client leads (a business, not something to apply to)."""
     from pgvector.django import CosineDistance
 
     reviews = OpportunityReview.objects.filter(
         organization_id=organization_id, embedding__isnull=False
     )
+    if not client_leads:
+        reviews = reviews.exclude(opportunity__opportunity_type=OpportunityType.CLIENT)
     if exclude_opportunity_id:
         reviews = reviews.exclude(opportunity_id=exclude_opportunity_id)
     if before is not None:

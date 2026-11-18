@@ -392,15 +392,21 @@ def search_keywords(organization, goal: str | None = None) -> list[str]:
     return list(dict.fromkeys(words))
 
 
-def client_search_plan(organization) -> dict:
+def client_search_plan(organization, focus: dict | None = None) -> dict:
     """What a client search looks for: the brief's kinds of customer (codes, for the
     directories' categories), the places to search and the country. Its keywords come
-    with the run's keywords."""
+    with the run's keywords. A worker's `focus` (customer_types, places) narrows it."""
     brief = client_brief_for(organization)
-    places = brief.target_cities or ([organization.city] if organization.city else [])
+    focus = focus or {}
+    places = (
+        focus.get("places")
+        or brief.target_cities
+        or ([organization.city] if organization.city else [])
+    )
     countries = brief.target_countries or ([organization.country] if organization.country else [])
+    customer_types = focus.get("customer_types") or brief.customer_types
     return {
-        "customer_types": [kind for kind in brief.customer_types if kind != "other"],
+        "customer_types": [kind for kind in customer_types if kind != "other"],
         "places": places,
         "country": countries[0] if countries else "",
         # LeadSignal codes: the signs the organization wants (scored in apps.ai).

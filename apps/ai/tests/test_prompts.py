@@ -99,4 +99,3 @@ def test_shipped_source_reader_prompt_renders():
     assert "https://example.org/calls" in rendered
     assert "Grants Page" in rendered
     assert "climate innovation call" in rendered
-

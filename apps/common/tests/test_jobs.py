@@ -115,3 +115,7 @@ def test_schedules_are_created_once_and_updated_after(temporal_dev, settings):
     spec = reminders.schedule.spec
     assert spec.time_zone_name == "Africa/Nairobi"
     assert spec.calendars[0].hour[0].start == 7
+    digest = dict(zip(first, described, strict=True))["outreach-weekly-digest"].schedule.spec
+    assert digest.time_zone_name == "Africa/Nairobi"
+    assert digest.calendars[0].day_of_week[0].start == 1  # Monday (Temporal: Sunday is 0)
+    assert digest.calendars[0].hour[0].start == 7

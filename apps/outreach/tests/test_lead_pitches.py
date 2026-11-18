@@ -8,6 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from apps.ai.testing import use_scripted_models
+from apps.authentication.models import UserProfile
 from apps.authentication.tests.factories import UserFactory
 from apps.discovery.tests.factories import make_opportunity
 from apps.organizations.models import OrganizationMembership
@@ -101,7 +102,7 @@ def test_approving_a_client_lead_writes_its_pitch_not_a_proposal(auth_client, or
     assert pitch["whatsapp"] == PITCH["whatsapp"]
     assert pitch["email_subject"] == PITCH["email_subject"]
     assert pitch["call_points"] == PITCH["call_points"]
-    assert pitch["prompt_id"] == "pitch_writer/v1"
+    assert pitch["prompt_id"] == "pitch_writer/v2"
     assert pitch["whatsapp_number"] == "254722123456"
     assert not Proposal.objects.filter(opportunity=opportunity).exists()
 
@@ -110,6 +111,54 @@ def test_approving_a_client_lead_writes_its_pitch_not_a_proposal(auth_client, or
     assert "Outdated" in prompt or "outdated" in prompt  # signs as labels
     # The lead's facts are data inside <lead>, after the rules.
     assert prompt.index(INJECTION) > prompt.index("<lead>")
+
+
+def test_the_pitch_is_signed_by_whoever_approved_the_lead(auth_client, user, organization, writer):
+    UserProfile.objects.update_or_create(
+        user=user, defaults={"first_name": "Amina", "last_name": "Otieno"}
+    )
+    approve(auth_client, organization, lead(organization, status="new"))
+    assert '"name": "Amina Otieno"' in writer[0].split("<sender>")[-1]
+
+
+def test_without_a_name_the_pitch_leaves_a_placeholder(auth_client, organization, writer):
+    approve(auth_client, organization, lead(organization, status="new"))
+    assert "<sender>\n{}\n</sender>" in writer[0]
+
+
+def test_an_unchecked_lead_is_never_told_it_has_no_website(
+    auth_client, organization, monkeypatch, settings
+):
+    """Only a listing without a website is known; the pitch may not claim there is none.
+    A pitch that does is written again with the rule spelled out."""
+    prompts = []
+    claims = dict(PITCH, whatsapp="Hello, I noticed you don't yet have an online enrollment site.")
+
+    def reply(prompt):
+        prompts.append(prompt)
+        return claims if len(prompts) == 1 else PITCH
+
+    use_scripted_models(monkeypatch, settings, {"pitch_writer": reply})
+    unchecked = {"website": "", "website_status": "unknown", "evidence": [], "signals": []}
+    opportunity = lead(organization, status="new", business_fields=unchecked)
+    approve(auth_client, organization, opportunity)
+
+    assert len(prompts) == 2
+    assert '"website_status": "not known: its directory listing shows none' in prompts[0]
+    assert "Nobody has looked for this business's website" in prompts[1]
+    pitch = auth_client.get(pitch_url(organization, opportunity)).data
+    assert pitch["whatsapp"] == PITCH["whatsapp"]
+
+
+def test_a_checked_lead_without_a_website_may_say_so(auth_client, organization, writer):
+    checked = {"website": "", "website_status": "not_found", "evidence": [], "signals": []}
+    claims = dict(PITCH, whatsapp="I couldn't find a website for you.")
+    from apps.ai.agents.pitch_writer import claims_no_website
+    from apps.ai.schemas.outreach import LeadPitchDraft
+
+    assert claims_no_website(LeadPitchDraft(**claims))
+    approve(auth_client, organization, lead(organization, status="new", business_fields=checked))
+    assert len(writer) == 1  # checked: no second pass
 
 
 def test_approving_again_keeps_the_pitch(auth_client, organization, writer):

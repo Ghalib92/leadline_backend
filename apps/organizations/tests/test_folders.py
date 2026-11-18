@@ -94,7 +94,9 @@ def test_admin_creates_renames_and_lists_folders(auth_client, organization):
     )
     assert renamed.data["name"] == "Proposals"
     listing = auth_client.get(url("folders", organization)).data
-    assert [(f["name"], f["document_count"]) for f in listing] == [("Proposals", 0)]
+    names = [(f["name"], f["document_count"]) for f in listing]
+    # Every organization starts with a folder, so the first upload needs no setup.
+    assert sorted(names) == [("Company documents", 0), ("Proposals", 0)]
 
 
 def test_folder_names_are_unique_per_organization_ignoring_case(auth_client, organization):

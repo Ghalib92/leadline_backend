@@ -101,7 +101,7 @@ def _request(run) -> DiscoveryRequest:
         folders=run.config.get("folders", []),
         knowledge=KnowledgeScope.of_run(run.config).to_config(),
         client_search=(
-            selectors.client_search_plan(organization)
+            selectors.client_search_plan(organization, run.config.get("client_focus"))
             if run.config.get("goal") == "clients"
             else {}
         ),

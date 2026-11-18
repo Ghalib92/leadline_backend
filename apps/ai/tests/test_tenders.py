@@ -212,7 +212,7 @@ def test_tender_runs_use_the_tender_judge_and_cap_agpo_reservations(monkeypatch,
     emitter, sink = ListEmitter(), Sink()
     outcome = run_discovery_graph(tender_request(), emitter, sink)
 
-    assert outcome.prompt_versions["tender_judge"] == "tender_judge/v1"
+    assert outcome.prompt_versions["tender_judge"] == "tender_judge/v2"
     assert "judge" not in outcome.prompt_versions
     saved = {c.title: c for c in sink.saved}
     dashboard = saved["Proposed development of projects monitoring system (investment dashboard)"]
@@ -270,3 +270,39 @@ def test_a_failed_read_is_not_repeated_for_every_search(web):
         with pytest.raises(SearchError):
             source.search("system", max_results=5)
     assert web.count(HOST) == 1
+
+
+@pytest.mark.usefixtures("discovery_settings")
+def test_portal_tenders_are_all_read_without_the_researchers_picks(monkeypatch, settings, portal):
+    """Whole records from tenders.go.ke cost no fetch: they never compete with web pages
+    for the researcher's picks."""
+    plan = [{"source": "kenya_ppip", "query": "monitoring system mobile application"}]
+    models = scripted(
+        monkeypatch,
+        settings,
+        plan,
+        researcher=lambda prompt: {"picks": []},
+        verifier=tender_verifier,
+        tender_judge=tender_judge,
+    )
+    emitter = ListEmitter()
+    run_discovery_graph(tender_request(), emitter, Sink())
+    messages = [event.message for event in emitter.events]
+    assert "Reading all 3 result(s) from official portals" in messages
+    assert len(models["verifier"].calls) == 3
+    assert "researcher" not in models  # nothing else to screen
+
+
+def test_portal_reads_are_capped_per_round(monkeypatch, settings, portal, discovery_settings):  # noqa: F811
+    """Past the cap, portal results go to the researcher like any other."""
+    discovery_settings(max_portal_reads_per_round=1, max_rounds=1)
+    plan = [{"source": "kenya_ppip", "query": "monitoring system mobile application"}]
+    models = scripted(
+        monkeypatch, settings, plan, verifier=tender_verifier, tender_judge=tender_judge
+    )
+    emitter = ListEmitter()
+    run_discovery_graph(tender_request(), emitter, Sink())
+    messages = [event.message for event in emitter.events]
+    assert "Reading all 1 result(s) from official portals" in messages
+    assert "Picked 2 of 2 result(s) to read" in messages
+    assert len(models["researcher"].calls) == 1

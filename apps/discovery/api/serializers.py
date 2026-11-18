@@ -4,7 +4,7 @@ from rest_framework import serializers
 
 from apps.ai.config.loader import load_sources_file
 from apps.knowledge.scope import KnowledgeScope
-from apps.organizations.choices import Goal, OpportunityType
+from apps.organizations.choices import BusinessCategory, Goal, OpportunityType
 from apps.organizations.models import OrganizationMembership
 
 from ..choices import (
@@ -55,6 +55,8 @@ class SearchAgentSerializer(serializers.ModelSerializer):
             "depth",
             "folders",
             "links",
+            "customer_types",
+            "places",
             "effective",
             "schedule",
             "enabled",
@@ -135,6 +137,17 @@ class SearchAgentWriteSerializer(serializers.Serializer):
     )
     depth = serializers.ChoiceField(choices=RunDepth.choices, allow_blank=True, required=False)
     links = AgentLinkSerializer(many=True, required=False, max_length=30)
+    # Clients workers only: narrow the clients brief to these customers and places.
+    customer_types = serializers.ListField(
+        child=serializers.ChoiceField(choices=BusinessCategory.choices),
+        max_length=10,
+        required=False,
+    )
+    places = serializers.ListField(
+        child=serializers.CharField(max_length=80, allow_blank=True),
+        max_length=10,
+        required=False,
+    )
     schedule = serializers.ChoiceField(choices=AgentSchedule.choices, required=False)
     enabled = serializers.BooleanField(required=False)
 
@@ -143,6 +156,12 @@ class SearchAgentWriteSerializer(serializers.Serializer):
 
     def validate_sources(self, value):
         return _unique(value)
+
+    def validate_customer_types(self, value):
+        return _unique(value)
+
+    def validate_places(self, value):
+        return _unique(place.strip() for place in value if place.strip())
 
     def validate_keywords(self, value):
         return _unique(keyword.strip() for keyword in value if keyword.strip())

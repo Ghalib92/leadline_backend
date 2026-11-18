@@ -425,7 +425,7 @@ def set_reminder_preference(*, organization_id, actor, **data) -> ReminderPrefer
         user=actor,
         defaults={"days_before": list(settings.DEADLINE_REMINDER_DAYS)},
     )
-    for field in ("enabled", "days_before"):
+    for field in ("enabled", "days_before", "weekly_digest"):
         if field in data:
             setattr(preference, field, data[field])
     preference.save()

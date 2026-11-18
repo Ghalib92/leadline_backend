@@ -288,8 +288,27 @@ def screen(runtime, state: DiscoveryState) -> DiscoveryState:
     if _stopped(state) or not leads:
         return {"picked": []}
     org_leads = [lead for lead in leads if lead.source == "org_source"]
-    other_leads = [lead for lead in leads if lead.source != "org_source"]
+    # Official portals return whole records (tenders.go.ke): read them all, up to a cap,
+    # rather than spending the researcher's picks on them. Reading them fetches nothing.
+    portal_leads = [
+        lead
+        for lead in leads
+        if lead.source != "org_source"
+        and getattr(runtime.sources.get(lead.source), "complete_listings", False)
+    ][: runtime.settings.max_portal_reads_per_round]
+    other_leads = [
+        lead for lead in leads if lead.source != "org_source" and lead not in portal_leads
+    ]
     picks = []
+    if portal_leads:
+        for lead in portal_leads:
+            lead.reason = lead.reason or "Listed on an official tender portal"
+        picks.extend(portal_leads)
+        runtime.emit(
+            "search",
+            f"Reading all {len(portal_leads)} result(s) from official portals",
+            data={"sources": sorted({lead.source for lead in portal_leads})},
+        )
     if other_leads:
         try:
             other_picks, fallback = select_leads(

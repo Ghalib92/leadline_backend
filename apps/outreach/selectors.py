@@ -69,8 +69,16 @@ def reminder_preference(organization, user) -> dict:
     """The member's settings, or the defaults when they never changed them."""
     preference = ReminderPreference.objects.filter(organization=organization, user=user).first()
     if preference is None:
-        return {"enabled": True, "days_before": list(settings.DEADLINE_REMINDER_DAYS)}
-    return {"enabled": preference.enabled, "days_before": list(preference.days_before)}
+        return {
+            "enabled": True,
+            "days_before": list(settings.DEADLINE_REMINDER_DAYS),
+            "weekly_digest": True,
+        }
+    return {
+        "enabled": preference.enabled,
+        "days_before": list(preference.days_before),
+        "weekly_digest": preference.weekly_digest,
+    }
 
 
 def reminder_recipients(opportunity) -> list:
@@ -175,7 +183,7 @@ WEBSITE_STATUS = {
     "down": "has a website, but it was down when checked",
     "none": "no website (its listing shows none)",
     "not_found": "no website found on its listing or in a web search",
-    "unknown": "not known",
+    "unknown": "not known: its directory listing shows none, and nobody has searched for one",
 }
 # Approved client leads still being worked.
 CALL_LIST_STATUSES = ("pursuing", "submitted")
@@ -212,7 +220,25 @@ def pitch_inputs(pitch) -> dict:
             "dossier": dossier_content(organization),
         },
         "lead": {key: value for key, value in lead.items() if value not in ("", None, [])},
+        "sender": _sender(pitch),
     }
+
+
+def _sender(pitch) -> dict:
+    """Who sends it: whoever asked for the pitch, else whoever approved the lead."""
+    user = pitch.requested_by
+    if user is None:
+        approval = (
+            pitch.opportunity.reviews.filter(decision=ReviewDecision.APPROVE)
+            .select_related("reviewer")
+            .order_by("-created_at")
+            .first()
+        )
+        user = approval.reviewer if approval else None
+    name = (user.get_full_name() or "").strip() if user is not None else ""
+    if "@" in name:  # no name on the profile: the email is not a signature
+        name = ""
+    return {"name": name, "organization": pitch.organization.name} if name else {}
 
 
 def activities_for(opportunity):

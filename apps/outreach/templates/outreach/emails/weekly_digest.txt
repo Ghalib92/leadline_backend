@@ -1,0 +1,19 @@
+{% autoescape off %}Hi {{ recipient_name }},
+
+Your week at {{ organization_name }}.
+{% if top %}
+Found this week: {{ found_summary }}. The best:
+{% for item in top %}- {{ item.title }} ({{ item.detail }})
+  {{ item.url }}
+{% endfor %}{% endif %}{% if to_review %}
+{{ to_review }} waiting for you to approve or reject: {{ review_url }}
+{% endif %}{% if closing %}
+Closing soon (approved):
+{% for item in closing %}- {{ item.title }}, closes {{ item.when }}{% if item.note %}. {{ item.note }}{% endif %}
+  {{ item.url }}
+{% endfor %}{% endif %}{% if follow_ups %}
+Call back:
+{% for item in follow_ups %}- {{ item.title }}, {{ item.when }}
+  {{ item.url }}
+{% endfor %}{% endif %}
+You get this every Monday as a member of {{ organization_name }}. Turn it off under Deadlines > Email reminders.{% endautoescape %}

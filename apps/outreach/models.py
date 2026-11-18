@@ -157,6 +157,8 @@ class ReminderPreference(UUIDTimestampedModel):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
     enabled = models.BooleanField(default=True)
     days_before = models.JSONField(default=list)  # e.g. [14, 3, 1]
+    # The Monday summary: new matches, what's closing, follow-ups due (on by default).
+    weekly_digest = models.BooleanField(default=True)
 
     class Meta:
         constraints = [
@@ -178,6 +180,21 @@ class ReminderLog(UUIDTimestampedModel):
             models.UniqueConstraint(
                 fields=["opportunity", "user", "deadline", "days_before"],
                 name="reminder_log_unique",
+            ),
+        ]
+
+
+class DigestLog(UUIDTimestampedModel):
+    """A sent weekly digest, so each week's is sent once per member and organization."""
+
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="+")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    week = models.DateField()  # the Monday it covers up to
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organization", "user", "week"], name="digest_log_unique"
             ),
         ]
 

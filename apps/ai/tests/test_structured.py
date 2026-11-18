@@ -56,3 +56,53 @@ def test_each_failed_attempt_is_logged_with_its_cause(caplog):
         invoke_structured(model, "rate it", Verdict)
     [record] = caplog.records
     assert "Structured output Verdict failed (attempt 1 of 2)" in record.getMessage()
+
+
+def test_a_brief_with_a_misspelt_meets_is_kept():
+    from apps.ai.schemas.discovery import OpportunityBrief
+
+    brief = OpportunityBrief.model_validate(
+        {
+            "what_it_is": "A system.",
+            "why_it_fits": "Software.",
+            "eligibility_checklist": [{"criterion": "Capacity", "meeds": True, "notes": ""}],
+            "documents_needed": [],
+            "deadline_plan": "",
+            "effort_estimate": "high",
+            "next_step": "Read the tender.",
+        }
+    )
+    assert brief.eligibility_checklist[0].meets is False
+
+
+def test_a_retry_says_what_went_wrong():
+    """gpt-oss sometimes answers with the schema itself; asking the same again repeats it."""
+    schema_echo = '{"description": "", "properties": {"score": {"type": "integer"}}}'
+    model = fake_chat_model(schema_echo, {"score": 4})
+    assert invoke_structured(model, "rate it", Verdict).output.score == 4
+    retry = model.calls[1]
+    assert retry[0].content == "rate it"
+    assert "returned the JSON schema itself instead of the data" in retry[-1].content
+
+
+def test_a_rate_limit_is_retried_without_a_correction():
+    import httpx
+    from groq import RateLimitError
+
+    response = httpx.Response(429, request=httpx.Request("POST", "https://api.groq.com/x"))
+    calls = []
+
+    class Flaky:
+        def with_structured_output(self, schema, **kwargs):
+            from langchain_core.runnables import RunnableLambda
+
+            def run(messages):
+                calls.append(messages)
+                if len(calls) == 1:
+                    raise RateLimitError("slow down", response=response, body={})
+                return {"raw": None, "parsed": Verdict(score=2), "parsing_error": None}
+
+            return RunnableLambda(run)
+
+    assert invoke_structured(Flaky(), "rate it", Verdict).output.score == 2
+    assert len(calls[1]) == 1  # the same request, no "previous answer" message

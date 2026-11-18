@@ -53,6 +53,8 @@ AGENT_FIELDS = frozenset(
         "links",
         "schedule",
         "enabled",
+        "customer_types",
+        "places",
     }
 )
 
@@ -112,6 +114,10 @@ def _fit_goal(organization, data, agent=None) -> dict:
                 )
         elif agent is not None and new_goal:
             data[field] = [value for value in getattr(agent, field) if value in allowed]
+    if goal != Goal.CLIENTS:  # customers and places only narrow a client search
+        for field in ("customer_types", "places"):
+            if field in data or (agent is not None and getattr(agent, field)):
+                data[field] = []
     return {**data, "goal": goal}
 
 
@@ -352,6 +358,13 @@ def _resolve_run_config(organization, agent, overrides):
         # Frozen with name and purpose, so the run's history survives renames.
         "folders": folders,
         "instructions": getattr(agent, "instructions", "") if agent is not None else "",
+        # A clients worker's own customers and places (empty: the clients brief's).
+        "client_focus": {
+            "customer_types": list(agent.customer_types),
+            "places": list(agent.places),
+        }
+        if agent is not None and scope["goal"] == "clients"
+        else {},
         # The websites source_reader reads, frozen like the folders.
         "links": [{k: link[k] for k in ("url", "label", "notes")} for link in scope["links"]],
         # Which documents the AI may read (apps.knowledge.scope.KnowledgeScope).
