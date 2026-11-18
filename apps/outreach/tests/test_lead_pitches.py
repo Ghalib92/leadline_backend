@@ -419,3 +419,49 @@ def test_a_whatsapp_link_on_their_site_wins(member_client, organization):
     )
     _, results = call_list(member_client, organization)
     assert results[0]["whatsapp_number"] == "254711000111"
+
+
+def test_an_unchecked_lead_is_looked_up_when_approved(
+    auth_client, organization, writer, monkeypatch, web
+):
+    """Its website is searched for and read first, so the pitch rests on what was found."""
+    from apps.ai.graphs.clients import lookup
+    from apps.ai.tests.test_client_lookup import KILIMA_HITS, StubSearch, tools
+    from apps.ai.tests.test_websites import OLD_SITE, serve
+
+    serve(web, "kilima-guesthouse.co.ke", OLD_SITE)
+    search = StubSearch({"Kilima Guest House": KILIMA_HITS})
+    monkeypatch.setattr(lookup, "build_tools", lambda runtime: tools(search))
+    unchecked = {
+        "website": "",
+        "website_status": "unknown",
+        "evidence": [],
+        "signals": [],
+        "source": "osm_places",
+        "source_label": "OpenStreetMap",
+        "source_url": "https://www.openstreetmap.org/node/1",
+    }
+    opportunity = lead(organization, status="new", business_fields=unchecked)
+    approve(auth_client, organization, opportunity)
+
+    opportunity.refresh_from_db()
+    assert search.queries == ['"Kilima Guest House" Nairobi']
+    assert opportunity.business["website_status"] == "found"
+    assert opportunity.source_url == "https://kilima-guesthouse.co.ke/"
+    assert any("© 2017" in item["detail"] for item in opportunity.business["evidence"])
+    # The angle was chosen before the site was known: dropped, the evidence leads.
+    assert "pitch_angle" not in opportunity.business
+    prompt = writer[0]
+    assert "has a website (found in a web search)" in prompt
+    assert "still shows © 2017" in prompt
+
+
+def test_a_checked_lead_is_not_looked_up_again(auth_client, organization, writer, monkeypatch):
+    from apps.ai.graphs.clients import lookup
+
+    def fail(runtime):
+        raise AssertionError("no lookup for a checked lead")
+
+    monkeypatch.setattr(lookup, "build_tools", fail)
+    approve(auth_client, organization, lead(organization, status="new"))
+    assert len(writer) == 1

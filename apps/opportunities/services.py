@@ -90,6 +90,27 @@ def add_discovered(*, run, candidate) -> tuple[Opportunity, bool]:
 
 
 @transaction.atomic
+def save_lead_lookup(opportunity_id, business: dict) -> bool:
+    """A worker write: an approved client lead's business after its website was looked
+    up (Opportunity.business). Its source link becomes its own website when one was
+    found. False when the lead is gone or no longer a client lead."""
+    opportunity = (
+        Opportunity.objects.select_for_update()
+        .filter(pk=opportunity_id, opportunity_type=OpportunityType.CLIENT)
+        .first()
+    )
+    if opportunity is None:
+        return False
+    opportunity.business = business
+    fields = ["business", "updated_at"]
+    if business.get("website"):
+        opportunity.source_url = business["website"]
+        fields.append("source_url")
+    opportunity.save(update_fields=fields)
+    return True
+
+
+@transaction.atomic
 def update_opportunity(*, organization_id, opportunity_id, actor, **data):
     """Any member may triage: move it along the pipeline, save it, keep notes."""
     organization = lock_organization(organization_id, actor, admin=False)

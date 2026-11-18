@@ -189,6 +189,13 @@ WEBSITE_STATUS = {
 CALL_LIST_STATUSES = ("pursuing", "submitted")
 
 
+def wanted_signals(organization) -> list[str]:
+    """The signs of need the organization's clients brief asks for (LeadSignal codes)."""
+    from apps.organizations.selectors import client_brief_for
+
+    return list(client_brief_for(organization).signals)
+
+
 def pitch_for(opportunity):
     return getattr(opportunity, "pitch", None)
 

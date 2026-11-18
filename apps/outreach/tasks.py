@@ -127,6 +127,7 @@ def write_lead_pitch(pitch_id):
     if pitch is None:
         return
     started_at = pitch.writing_started_at
+    _look_up_unchecked(pitch)
     inputs = selectors.pitch_inputs(pitch)
     try:
         budget = Budget(load_outreach_file().pitch_writer.budget.model_dump())
@@ -157,6 +158,26 @@ def write_lead_pitch(pitch_id):
         prompt_id=runtime.prompt_versions.get("pitch_writer", ""),
         model=runtime.models_used.get("pitch_writer") or resolve_role("pitch_writer").model,
     )
+
+
+def _look_up_unchecked(pitch) -> None:
+    """A lead whose website nobody has looked for is looked up before its pitch is
+    written (one web search and a site check), so the pitch rests on what was found,
+    not a guess. A failed lookup leaves the lead as it was."""
+    from apps.ai.graphs.clients.lookup import look_up_lead, needs_lookup
+    from apps.opportunities.services import save_lead_lookup
+
+    opportunity = pitch.opportunity
+    if not needs_lookup(opportunity.business or {}):
+        return
+    wanted = selectors.wanted_signals(pitch.organization)
+    try:
+        found = look_up_lead(opportunity.business, wanted_signals=wanted)
+    except Exception:
+        logger.exception("Lookup of lead %s failed", opportunity.pk)
+        return
+    if found is not None and save_lead_lookup(opportunity.pk, found):
+        opportunity.refresh_from_db(fields=["business", "source_url"])
 
 
 # Never retried: if a worker died after the mail server accepted the email, a retry would

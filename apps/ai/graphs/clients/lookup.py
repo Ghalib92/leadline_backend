@@ -26,8 +26,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
+from apps.ai.config.loader import ClientsSettings
+from apps.ai.events import NullEmitter
 from apps.ai.exceptions import AIConfigError
-from apps.ai.graphs.budget import BudgetExhausted
+from apps.ai.graphs.budget import Budget, BudgetExhausted
+from apps.ai.graphs.runtime import AgentRuntimeMixin
 from apps.ai.schemas.clients import Business
 from apps.ai.tools.contacts.hunter import HunterError, domain_search, hunter_enabled
 from apps.ai.tools.fetch.renderers import build_renderers
@@ -355,3 +358,72 @@ def _summarise(runtime: ClientsRuntime, leads: list[dict]) -> None:
 
 def _host(url: str) -> str:
     return (urlsplit(url).hostname or url).removeprefix("www.")
+
+
+# ---------------------------------------------------------------------------
+# One lead, outside a search: when an unchecked lead is approved
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class SingleLookupRuntime(AgentRuntimeMixin):
+    """What the lookup needs of a run, for one lead: settings, a small budget, the
+    signals the organization wants, and an emitter (none by default)."""
+
+    settings: ClientsSettings
+    budget: Budget
+    request: object  # .client_search {"signals": [...]}
+    emitter: object = field(default_factory=NullEmitter)
+    warnings: list[str] = field(default_factory=list)
+    prompt_versions: dict = field(default_factory=dict)
+    models_used: dict = field(default_factory=dict)
+    _models: dict = field(default_factory=dict)
+    _lock: threading.Lock = field(default_factory=threading.Lock)
+
+
+def needs_lookup(details: dict) -> bool:
+    """Nobody has looked for its website: the listing shows none and it wasn't searched."""
+    return details.get("website_status") == "unknown"
+
+
+def look_up_lead(details: dict, *, wanted_signals=(), tools: LookupTools | None = None):
+    """A stored lead (Opportunity.business) after a lookup: its website searched for and
+    checked, with fresh signals and evidence. None when nothing could be checked (no
+    web search set up, or the search failed). Never raises for a site problem."""
+    from types import SimpleNamespace
+
+    from apps.ai.config.loader import load_sources_file
+
+    from .evidence import evidence
+
+    settings = load_sources_file().clients
+    business = Business.model_validate(
+        {key: value for key, value in details.items() if key in Business.model_fields}
+    )
+    runtime = SingleLookupRuntime(
+        settings=settings,
+        budget=Budget(
+            {
+                "max_searches": 1,
+                "max_pages": settings.lookup.pages_per_lead + 1,
+                "max_tokens": 1,
+                "max_wall_seconds": 120,
+            }
+        ),
+        request=SimpleNamespace(client_search={"signals": list(wanted_signals)}),
+    )
+    tools = tools or build_tools(runtime)
+    if tools.search is None and not business.website:
+        return None
+    try:
+        checked = _look_up(runtime, business, tools)
+    except BudgetExhausted:
+        return None
+    if not checked.checked:
+        return None  # the search failed: still unknown
+    signals = _signals(runtime, checked)
+    # The scorer's angle was chosen without knowing the site; once a site is found it
+    # may offer what the site already has (a clinic that already books online), so the
+    # pitch works from the evidence instead.
+    angle = "" if checked.website else details.get("pitch_angle", "")
+    return checked.as_details(signals=signals, pitch=angle, evidence=evidence(checked, signals))
