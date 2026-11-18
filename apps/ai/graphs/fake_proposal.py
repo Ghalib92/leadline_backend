@@ -69,6 +69,11 @@ class FakeProposalWriter:
         emit("requirements", f"Reading the call: {request.opportunity.get('title', '')[:120]}")
         _pause()
         emit("requirements", "Found 6 sections to write and 4 evaluation criteria")
+        checklist = None
+        if request.is_tender:
+            emit("checklist", "Checking 3 requirements against your documents")
+            _pause()
+            checklist = _checklist(request)
         emit("outline", "Planned 6 sections", tool="proposal_outline")
         _pause()
         sections = []
@@ -116,6 +121,7 @@ class FakeProposalWriter:
                 ],
                 "missing_requirements": ["Registration certificate"],
             },
+            checklist=checklist,
         )
 
     def rewrite_section(self, request, emitter, *, section, requirements, instructions):
@@ -136,6 +142,37 @@ class FakeProposalWriter:
             instructions,
         )
         return ProposalResult(sections=[rewritten])
+
+    def check_documents(self, request, emitter, *, requirements):
+        emitter.emit(RunEvent(step="checklist", message="Checking 3 requirements"))
+        _pause()
+        return ProposalResult(sections=[], checklist=_checklist(request))
+
+
+def _checklist(request):
+    """Sample verdicts; the first company document, if any, covers registration."""
+    first = request.documents[:1]
+    registered = "ready" if first else "missing"
+    items = [
+        ("MR1", "[Sample] Certificate of incorporation", "certificate", registered),
+        ("MR2", "[Sample] Valid tax compliance certificate", "certificate", "missing"),
+        ("MR3", "[Sample] Signed form of tender", "form", "prepare"),
+    ]
+    return [
+        {
+            "key": f"r{n}",
+            "n": n,
+            "code": code,
+            "requirement": text,
+            "kind": kind,
+            "status": status,
+            "documents": [{"id": d["id"], "title": d["title"]} for d in first]
+            if status == "ready"
+            else [],
+            "note": "",
+        }
+        for n, (code, text, kind, status) in enumerate(items, start=1)
+    ]
 
 
 register_writer("fake", FakeProposalWriter())

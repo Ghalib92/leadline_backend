@@ -298,46 +298,75 @@ def test_eu_funding_api_errors(web):
 
 def test_ted_europa_search_and_read(web):
     future = (date.today() + timedelta(days=30)).isoformat()
-    past = (date.today() - timedelta(days=2)).isoformat()
+    queries = []
 
     @web.route("api.ted.europa.eu", "/v3/notices/search")
     def search(request):
+        body = json.loads(request.content)
+        queries.append(body["query"])
+        if "FT~kenya" in body["query"]:
+            return httpx.Response(200, json={"notices": [], "totalNoticeCount": 0})
         return httpx.Response(
             200,
             json={
                 "notices": [
                     {
-                        "ND": "123456-2026",
-                        "TI": {"ENG": "Cloud Infrastructure Services"},
-                        "DT": future,
-                        "CA_NAME": {"ENG": "European Commission DG DIGIT"},
-                        "CONTENT": {"ENG": "<p>Procurement of cloud infrastructure.</p>"},
-                        "VALUE": "5000000",
-                        "CURRENCY": "EUR",
+                        "publication-number": "123456-2026",
+                        "publication-date": "2026-11-01+01:00",
+                        "notice-title": {"eng": "Cloud Infrastructure Services", "fra": "Cloud"},
+                        "deadline-receipt-tender-date-lot": [f"{future}+01:00"],
+                        "buyer-name": {"eng": ["European Commission DG DIGIT"]},
+                        "buyer-country": ["BEL"],
+                        "description-lot": {"eng": ["<p>Procurement of cloud infrastructure.</p>"]},
+                        "estimated-value-lot": ["5000000"],
+                        "estimated-value-cur-lot": ["EUR"],
+                        "place-of-performance": ["BE100", "BEL"],
                     },
-                    {
-                        "ND": "999999-2025",
-                        "TI": "Closed procurement",
-                        "DT": past,
-                        "CA_NAME": "Buyer",
-                    },
+                    {"publication-number": "", "notice-title": {"eng": "No number"}},
                 ]
             },
         )
 
     source = TedEuropaSource()
-    hits = source.search("cloud services", max_results=5)
+    hits = source.search('"Cloud" hosting services Kenya', max_results=5)
+    # An expert query (plain text is a syntax error), open notices only; with nothing
+    # found, the last word is dropped. Stopwords ("services") are never searched.
+    assert queries == [
+        "(FT~cloud AND FT~hosting AND FT~kenya) AND deadline-receipt-tender-date-lot>=today() "
+        "SORT BY publication-date DESC",
+        "(FT~cloud AND FT~hosting) AND deadline-receipt-tender-date-lot>=today() "
+        "SORT BY publication-date DESC",
+    ]
     assert len(hits) == 1
     hit = hits[0]
     assert hit.title == "Cloud Infrastructure Services"
-    assert "123456-2026" in hit.url
+    assert hit.url == "https://ted.europa.eu/en/notice/-/detail/123456-2026"
     assert hit.extra["funder"] == "European Commission DG DIGIT"
     assert hit.extra["deadline"] == future
     assert hit.extra["source"] == "TED"
     page = source.read(hit)
-    assert page is not None
     assert "Cloud Infrastructure Services" in page.text
     assert "5000000 EUR" in page.text
+    assert "Place of performance: BEL" in page.text
+    assert "Procurement of cloud infrastructure." in page.text
+
+
+def test_ted_europa_places_option_and_empty_queries(web):
+    queries = []
+
+    @web.route("api.ted.europa.eu", "/v3/notices/search")
+    def search(request):
+        queries.append(json.loads(request.content)["query"])
+        return httpx.Response(200, json={"notices": []})
+
+    source = TedEuropaSource(options={"places": ["KEN", "bad; DROP"]})
+    assert source.search("software development portal design", max_results=5) == []
+    assert "place-of-performance IN (KEN) " in queries[0]
+    # Three tries at most, and never fewer than two words.
+    assert len(queries) == 3
+    assert "(FT~software AND FT~development)" in queries[-1]
+    assert source.search("the tender of services", max_results=5) == []
+    assert len(queries) == 3
 
 
 def test_ted_europa_api_errors(web):

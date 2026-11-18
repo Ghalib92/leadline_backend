@@ -5,6 +5,7 @@ from apps.ai.exceptions import StructuredOutputError
 from apps.ai.graphs.budget import Budget, BudgetExhausted
 from apps.ai.graphs.proposal_runner import ProposalResult, SectionRewriteFailed, register_writer
 from apps.ai.llm import build_chat_model
+from apps.ai.tools.documents import HttpDocumentReader
 from apps.ai.tools.fetch.http import HttpFetcher
 from apps.ai.tracing import run_config
 
@@ -13,16 +14,26 @@ from .builder import build_graph
 from .runtime import ProposalRuntime
 
 ROLES = ("proposal_requirements", "proposal_outline", "drafter", "proposal_review")
+TENDER_ROLES = (
+    "tender_requirements",
+    "bid_checklist",
+    "proposal_outline",
+    "drafter",
+    "proposal_review",
+)
 
 
-def _runtime(request, emitter, roles=ROLES) -> ProposalRuntime:
+def _runtime(request, emitter, roles=None) -> ProposalRuntime:
     settings = load_proposals_file()
+    if roles is None:
+        roles = TENDER_ROLES if request.is_tender else ROLES
     runtime = ProposalRuntime(
         request=request,
         emitter=emitter,
         settings=settings,
         budget=Budget(request.budget or settings.budget.model_dump()),
         fetcher=HttpFetcher(),
+        documents=HttpDocumentReader(max_bytes=settings.tender.max_document_mb * 1_000_000),
     )
     # Build the models first: a missing key fails the job before any other work.
     for role in roles:
@@ -63,6 +74,7 @@ class GraphProposalWriter:
             state.get("sections", []),
             requirements=state.get("requirements") or {},
             review=state.get("review"),
+            checklist=state.get("checklist"),
         )
 
     def rewrite_section(self, request, emitter, *, section, requirements, instructions):
@@ -74,6 +86,7 @@ class GraphProposalWriter:
             data={"section": section["key"]},
         )
         section = {**section, "evidence": nodes.find_evidence(runtime, section)}
+        requirements = nodes.writing_requirements(requirements)
         try:
             written = nodes.write_section(runtime, section, requirements, instructions)
         except (StructuredOutputError, BudgetExhausted) as exc:
@@ -89,6 +102,11 @@ class GraphProposalWriter:
             data={"section": section["key"], "words": words},
         )
         return _result(runtime, [written])
+
+    def check_documents(self, request, emitter, *, requirements):
+        runtime = _runtime(request, emitter, roles=("bid_checklist",))
+        checklist = nodes.check_documents(runtime, requirements or {})
+        return _result(runtime, [], checklist=checklist)
 
 
 register_writer("graph", GraphProposalWriter())

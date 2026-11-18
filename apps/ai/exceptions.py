@@ -19,3 +19,9 @@ class StructuredOutputError(Exception):
         again in the same run won't help."""
         cause = self.__cause__
         return getattr(cause, "status_code", None) == 429 or "RateLimit" in type(cause).__name__
+
+
+class RequestTooLarge(Exception):
+    """The provider refuses the request's size on the current plan (Groq's free tier
+    caps one request at its tokens-per-minute limit). A fallback model with a larger
+    allowance can answer it; retrying the same model can't."""

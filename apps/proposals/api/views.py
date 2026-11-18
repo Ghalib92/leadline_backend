@@ -11,6 +11,7 @@ from .. import selectors, services
 from ..export import proposal_docx
 from ..models import Proposal
 from .serializers import (
+    ChecklistTickSerializer,
     ProposalEventsSerializer,
     ProposalKnowledgeSerializer,
     ProposalSerializer,
@@ -210,6 +211,42 @@ class SectionRewriteView(ProposalAPIView):
             key=key,
             actor=request.user,
             **serializer.validated_data,
+        )
+        return self.proposal_response(proposal.pk, response_status=status.HTTP_202_ACCEPTED)
+
+
+@extend_schema(tags=["Proposals"], request=ChecklistTickSerializer, responses=ProposalSerializer)
+class ChecklistItemView(ProposalAPIView):
+    """Tick a bid requirement as in hand (`done: true`), or untick it."""
+
+    serializer_class = ProposalSerializer
+
+    def patch(self, request, organization_id, proposal_id, key):
+        proposal = self.get_proposal()
+        serializer = ChecklistTickSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        services.tick_checklist_item(
+            organization_id=organization_id,
+            proposal_id=proposal.pk,
+            key=key,
+            done=serializer.validated_data["done"],
+            actor=request.user,
+        )
+        return self.proposal_response(proposal.pk)
+
+
+@extend_schema(tags=["Proposals"], request=None, responses={202: ProposalSerializer})
+class ChecklistRecheckView(ProposalAPIView):
+    """Check the tender's requirements against company documents again (after
+    uploading what was missing). 409 `not_tender` or `no_checklist`."""
+
+    serializer_class = ProposalSerializer
+    starts_ai_job = True
+
+    def post(self, request, organization_id, proposal_id):
+        proposal = self.get_proposal()
+        services.recheck_documents(
+            organization_id=organization_id, proposal_id=proposal.pk, actor=request.user
         )
         return self.proposal_response(proposal.pk, response_status=status.HTTP_202_ACCEPTED)
 

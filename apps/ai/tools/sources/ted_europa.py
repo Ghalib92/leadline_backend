@@ -1,10 +1,17 @@
-"""TED (Tenders Electronic Daily) - EU public procurement and tenders portal.
+"""TED (Tenders Electronic Daily): the EU's public procurement notices.
 
-Public API v3 for European procurement notices:
-https://api.ted.europa.eu/v3/notices/search
+Search API v3 (public, no key): https://api.ted.europa.eu/v3/notices/search. It takes
+an "expert query", not plain text: a plain "software development" is a syntax error
+(HTTP 400). Queries are built here from the search's words: full text (`FT~`) with
+all words, then without the last word when that finds nothing (never fewer than two:
+one word, or any word, matches thousands of unrelated notices), open notices only,
+newest first.
+
+Options (sources.yaml): `places`, ISO 3166 alpha-3 codes for where the work is done
+(e.g. [KEN, UGA]); EU-funded work abroad is listed with the place it is done.
 """
 
-from datetime import date, datetime
+import re
 
 import httpx
 
@@ -16,6 +23,42 @@ from .base import html_to_text
 
 API = "https://api.ted.europa.eu/v3/notices/search"
 DETAIL_URL = "https://ted.europa.eu/en/notice/-/detail/{id}"
+FIELDS = [
+    "publication-number",
+    "publication-date",
+    "notice-title",
+    "buyer-name",
+    "buyer-country",
+    "deadline-receipt-tender-date-lot",
+    "description-lot",
+    "estimated-value-lot",
+    "estimated-value-cur-lot",
+    "place-of-performance",
+]
+MAX_WORDS = 5
+_WORD = re.compile(r"[a-z0-9]{3,}")
+_PLACE = re.compile(r"^[A-Z]{3}$")
+STOPWORDS = {
+    "the", "and", "for", "with", "from", "tender", "tenders", "procurement", "contract",
+    "contracts", "notice", "notices", "open", "call", "calls", "services", "service",
+    "supply", "provision", "europe", "european", "ted",
+}  # fmt: skip
+
+
+MAX_TRIES = 3
+
+
+def expert_query(words: list[str], *, places=()) -> str:
+    joined = " AND ".join(f"FT~{word}" for word in words)
+    query = f"({joined}) AND deadline-receipt-tender-date-lot>=today()"
+    if places:
+        query += f" AND place-of-performance IN ({' '.join(places)})"
+    return f"{query} SORT BY publication-date DESC"
+
+
+def query_words(query: str) -> list[str]:
+    words = [w for w in _WORD.findall(query.lower()) if w not in STOPWORDS]
+    return list(dict.fromkeys(words))[:MAX_WORDS]
 
 
 class TedEuropaSource:
@@ -26,96 +69,32 @@ class TedEuropaSource:
         self.options = options or {}
 
     def search(self, query: str, *, max_results: int) -> list[SearchHit]:
-        body = {
-            "query": query[:200],
-            "fields": [
-                "ND",
-                "TI",
-                "PD",
-                "DT",
-                "CONTENT",
-                "CA_NAME",
-                "VALUE",
-                "CURRENCY",
-                "OJ_TYPE",
-            ],
-            "page": 1,
-            "limit": max(1, min(max_results, 50)),
-        }
+        words = query_words(query)
+        if not words:
+            return []
+        places = [p for p in self.options.get("places") or [] if _PLACE.match(str(p))]
+        limit = max(1, min(max_results, 50))
+        notices = []
+        with get_http_client(timeout=float(self.options.get("timeout_seconds", 30))) as client:
+            for _ in range(MAX_TRIES):
+                notices = self._search(client, expert_query(words, places=places), limit)
+                if notices or len(words) <= 2:
+                    break
+                words = words[:-1]
+        hits = [hit for hit in (_hit(notice) for notice in notices) if hit]
+        return hits[:max_results]
+
+    def _search(self, client, query: str, limit: int) -> list[dict]:
+        body = {"query": query, "fields": FIELDS, "page": 1, "limit": limit}
         try:
-            with get_http_client(timeout=30) as client:
-                response = client.post(API, json=body)
+            response = client.post(API, json=body)
         except httpx.HTTPError as exc:
             raise SearchError(
                 f"ted.europa.eu could not be reached ({type(exc).__name__})."
             ) from exc
         if response.status_code >= 400:
             raise SearchError(f"ted.europa.eu returned HTTP {response.status_code}.")
-
-        data = response.json()
-        today = date.today().isoformat()
-        notices = data.get("notices") or data.get("results") or []
-        hits = []
-
-        for notice in notices:
-            notice_id = (
-                notice.get("ND")
-                or notice.get("publication-number")
-                or notice.get("id")
-                or notice.get("noticeId")
-                or ""
-            )
-            raw_title = _text_value(notice.get("TI") or notice.get("title") or "")
-            title = html_to_text(raw_title).strip()
-            if not title:
-                continue
-
-            deadline = _extract_date(
-                notice.get("DT") or notice.get("deadline") or notice.get("submissionDeadline") or ""
-            )
-            # Filter out closed tenders if past deadline is given
-            if deadline and deadline < today:
-                continue
-
-            buyer = (
-                _text_value(
-                    notice.get("CA_NAME")
-                    or notice.get("buyer")
-                    or notice.get("contractingAuthority")
-                    or ""
-                )
-                or "European Public Buyer"
-            )
-
-            url = DETAIL_URL.format(id=notice_id) if notice_id else (notice.get("url") or "")
-            if not url:
-                continue
-
-            summary = html_to_text(
-                _text_value(notice.get("CONTENT") or notice.get("summary") or "")
-            ).strip()
-
-            snippet = f"{buyer}. Closes {deadline or 'not stated'}."
-            content = _listing_text(title, str(notice_id), buyer, deadline, summary, notice)
-
-            hits.append(
-                SearchHit(
-                    title=title,
-                    url=url,
-                    snippet=snippet,
-                    content=content,
-                    extra={
-                        "funder": buyer,
-                        "notice_id": str(notice_id),
-                        "deadline": deadline,
-                        "source": "TED",
-                    },
-                )
-            )
-            if len(hits) >= max_results:
-                break
-
-        return hits
+        return response.json().get("notices") or []
 
     def read(self, hit: SearchHit) -> FetchedPage | None:
         if hit.content:
@@ -123,55 +102,56 @@ class TedEuropaSource:
         return None
 
 
-def _text_value(val) -> str:
-    """Extract string value from potentially multilingual or nested dict/list responses."""
-    if isinstance(val, str):
-        return val
-    if isinstance(val, dict):
-        for lang in ("ENG", "eng", "EN", "en"):
-            if lang in val and isinstance(val[lang], str):
-                return val[lang]
-        for v in val.values():
-            if isinstance(v, str):
-                return v
-    if isinstance(val, list) and val:
-        return _text_value(val[0])
-    return ""
-
-
-def _listing_text(
-    title: str,
-    notice_id: str,
-    buyer: str,
-    deadline: str,
-    summary: str,
-    notice: dict,
-) -> str:
-    val = notice.get("VALUE") or ""
-    curr = notice.get("CURRENCY") or ""
-    val_str = f"{val} {curr}".strip() if val else ""
+def _hit(notice: dict) -> SearchHit | None:
+    number = str(notice.get("publication-number") or "")
+    title = html_to_text(_text(notice.get("notice-title"))).strip()
+    if not number or not title:
+        return None
+    buyer = _text(notice.get("buyer-name")) or "European public buyer"
+    deadline = _first(notice.get("deadline-receipt-tender-date-lot"))[:10]
+    summary = html_to_text(_text(notice.get("description-lot"))).strip()
+    value = _first(notice.get("estimated-value-lot"))
+    currency = _first(notice.get("estimated-value-cur-lot"))
+    places = [p for p in dict.fromkeys(notice.get("place-of-performance") or []) if len(p) == 3]
     lines = [
         f"Title: {title}",
-        f"Publication number: {notice_id}" if notice_id else "",
+        f"Publication number: {number}",
         f"Contracting authority: {buyer}",
-        f"Estimated value: {val_str}" if val_str else "",
+        f"Buyer country: {', '.join(notice.get('buyer-country') or [])}",
+        f"Place of performance: {', '.join(places)}" if places else "",
+        f"Estimated value: {value} {currency}".strip() if value else "",
         f"Submission deadline: {deadline or 'not stated'}",
+        f"Published: {str(notice.get('publication-date') or '')[:10]}",
+        "Opportunity type: tender",
     ]
-    header = "\n".join(line for line in lines if line)
-    return f"{header}\n\nDescription:\n{summary}".strip() if summary else header
+    header = "\n".join(line for line in lines if line and not line.endswith(": "))
+    return SearchHit(
+        title=title,
+        url=DETAIL_URL.format(id=number),
+        snippet=f"{buyer}. Closes {deadline or 'not stated'}.",
+        content=f"{header}\n\nDescription:\n{summary}".strip() if summary else header,
+        published=str(notice.get("publication-date") or "")[:10],
+        extra={"funder": buyer, "notice_id": number, "deadline": deadline, "source": "TED"},
+    )
 
 
-def _extract_date(value: str) -> str:
-    if not value or not isinstance(value, str):
-        return ""
-    value = value.strip()
-    if len(value) >= 10 and value[4] == "-" and value[7] == "-":
-        return value[:10]
-    if len(value) == 8 and value.isdigit():
-        return f"{value[:4]}-{value[4:6]}-{value[6:]}"
-    for fmt in ("%Y-%m-%d", "%Y%m%d", "%d/%m/%Y", "%m/%d/%Y"):
-        try:
-            return datetime.strptime(value[:10], fmt).date().isoformat()
-        except (ValueError, TypeError):
-            continue
+def _first(value) -> str:
+    if isinstance(value, list):
+        return str(value[0]) if value else ""
+    return str(value or "")
+
+
+def _text(value) -> str:
+    """English when the notice has it, else its first language; lists are joined."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return " ".join(str(v) for v in value if v)
+    if isinstance(value, dict):
+        for lang in ("eng", "ENG", "en", "EN"):
+            if value.get(lang):
+                return _text(value[lang])
+        for item in value.values():
+            if item:
+                return _text(item)
     return ""

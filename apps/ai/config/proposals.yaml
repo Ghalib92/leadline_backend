@@ -5,8 +5,8 @@
 version: 1
 
 budget:
-  max_searches: 30        # company-document searches (one or two per section)
-  max_pages: 1            # the call's own web page, read once for its requirements
+  max_searches: 60        # company-document searches: one per section and per checklist item
+  max_pages: 5            # the call's own web page, plus a tender's documents
   max_tokens: 160000
   max_wall_seconds: 600
 
@@ -20,3 +20,27 @@ max_call_chars: 15000
 max_concurrency: 3
 # Used when the call gives no word limit for a section.
 default_section_words: 400
+
+# Tenders (bids). The requirements come from the tender's own documents (PDF or Word):
+# the tender document first, then terms of reference and notices. Long documents are
+# cut to the pages that hold requirements (apps/ai/tools/documents/pages.py).
+tender:
+  max_documents: 3
+  max_document_mb: 15
+  # Text sent to the requirements step, from all documents. Groq's free tier refuses
+  # one request above 8,000 tokens (~3.4 characters each); larger calls go to the
+  # fallback model (Gemini), so keep this under ~22,000 to stay on Groq.
+  max_document_chars: 20000
+  # The compliance checklist: requirements checked against company documents.
+  checklist_items: 30
+  passages_per_item: 2        # company-document passages shown per requirement
+
+# A bid's deadline plan: days before closing each step is due. Steps on a weekend
+# move to the Friday before. With less time left, every step is due today.
+bid_plan:
+  clarifications: 7   # when the tender gives no date for questions
+  bid_security: 7     # banks and insurers need a few working days
+  documents: 5        # collect what the checklist marks missing
+  draft: 3            # the technical proposal finished
+  review: 2           # read through, sign and stamp
+  submit: 1           # portals slow down on the last day

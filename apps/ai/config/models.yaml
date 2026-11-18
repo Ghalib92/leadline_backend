@@ -53,6 +53,16 @@ roles:
     reasoning_effort: medium
     max_tokens: 8000
     description: Reads the call and lists what the proposal must contain and how it is judged.
+  tender_requirements:
+    tier: answer
+    reasoning_effort: medium
+    max_tokens: 8000
+    description: Reads a tender's documents and lists its mandatory requirements, key dates, submission rules and scoring.
+  bid_checklist:
+    tier: answer
+    reasoning_effort: low
+    max_tokens: 6000
+    description: Checks the company's documents against a tender's mandatory requirements (ready, check, missing, prepare).
   proposal_outline:
     tier: answer
     reasoning_effort: medium

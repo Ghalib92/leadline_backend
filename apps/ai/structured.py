@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from langchain_core.language_models.chat_models import BaseChatModel
 from pydantic import BaseModel
 
-from apps.ai.exceptions import AIConfigError, StructuredOutputError
+from apps.ai.exceptions import AIConfigError, RequestTooLarge, StructuredOutputError
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +44,10 @@ def invoke_structured[T: BaseModel](
             result = runnable.invoke(messages, config=config)
         except AIConfigError:
             raise
+        except RequestTooLarge as exc:  # the same request again can't fit either
+            error = exc
+            _log_failure(schema, attempt, attempts, exc)
+            break
         except Exception as exc:  # provider-specific "tool_use_failed" or parse errors
             error = exc
             _log_failure(schema, attempt, attempts, exc)

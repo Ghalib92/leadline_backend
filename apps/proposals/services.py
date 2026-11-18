@@ -8,6 +8,7 @@ the job is still the one it claimed (`job_started_at`), so a worker that was giv
 on can never overwrite newer work.
 """
 
+import re
 from datetime import timedelta
 
 from django.conf import settings
@@ -77,6 +78,34 @@ def _new_version(proposal, sections, *, source, note, actor=None) -> ProposalVer
         created_by=actor,
     )
     return version
+
+
+def _requirement_key(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", (text or "").lower())
+
+
+def _with_ticks(checklist: list[dict], previous: list[dict]) -> list[dict]:
+    """A new checklist keeps what people ticked on the last one (same requirement)."""
+    ticked = {
+        _requirement_key(item.get("requirement", "")): item
+        for item in previous or []
+        if item.get("done")
+    }
+    merged = []
+    for item in checklist:
+        old = ticked.get(_requirement_key(item.get("requirement", "")))
+        merged.append(
+            {
+                **item,
+                "done": bool(old),
+                "done_at": old.get("done_at") if old else None,
+            }
+        )
+    return merged
+
+
+def _is_tender(proposal) -> bool:
+    return proposal.opportunity.opportunity_type == OpportunityType.TENDER
 
 
 def _current_sections(proposal) -> list[dict]:
@@ -234,6 +263,50 @@ def restore_version(*, organization_id, proposal_id, number, actor) -> Proposal:
     return proposal
 
 
+@transaction.atomic
+def recheck_documents(*, organization_id, proposal_id, actor) -> Proposal:
+    """Check the tender's requirements against company documents again, e.g. after
+    uploading a missing certificate. The text is not touched."""
+    organization = lock_organization(organization_id, actor, admin=False)
+    proposal = _locked_proposal(organization, proposal_id)
+    _ensure_idle(proposal)
+    if not _is_tender(proposal):
+        raise Conflict("Only tenders have a document checklist.", code="not_tender")
+    if not proposal.checklist:
+        raise Conflict(
+            "There is no checklist yet. Write the bid first, or redraft it.", code="no_checklist"
+        )
+    _queue(proposal, job=ProposalJob.CHECKLIST, actor=actor)
+    record_event(organization, actor, "proposal.checklist_recheck_requested", target_id=proposal.pk)
+    return proposal
+
+
+@transaction.atomic
+def tick_checklist_item(*, organization_id, proposal_id, key, done, actor) -> Proposal:
+    """Mark a requirement as in hand for this bid (or not). Allowed while the AI
+    works: a finishing job keeps the ticks."""
+    organization = lock_organization(organization_id, actor, admin=False)
+    proposal = _locked_proposal(organization, proposal_id)
+    checklist = [dict(item) for item in proposal.checklist or []]
+    item = next((item for item in checklist if item.get("key") == key), None)
+    if item is None:
+        raise ValidationError({"key": "This checklist has no such item."})
+    if bool(item.get("done")) == done:
+        return proposal
+    item["done"] = done
+    item["done_at"] = timezone.now().isoformat() if done else None
+    proposal.checklist = checklist
+    proposal.save(update_fields=["checklist", "updated_at"])
+    record_event(
+        organization,
+        actor,
+        "proposal.checklist_ticked",
+        target_id=proposal.pk,
+        metadata={"item": key, "done": done},
+    )
+    return proposal
+
+
 # ---------------------------------------------------------------------------
 # Workers (no caller)
 # ---------------------------------------------------------------------------
@@ -295,6 +368,21 @@ def save_draft(proposal_id, started_at, result) -> bool:
     proposal.requirements = result.requirements or {}
     proposal.review = result.review
     proposal.drafted_at = timezone.now()
+    if result.checklist is not None:
+        proposal.checklist = _with_ticks(result.checklist, proposal.checklist)
+        proposal.checked_at = timezone.now()
+    _finish(proposal, result)
+    return True
+
+
+@transaction.atomic
+def save_checklist(proposal_id, started_at, result) -> bool:
+    """A document recheck: the new checklist, keeping people's ticks."""
+    proposal = _claimed(proposal_id, started_at)
+    if proposal is None:
+        return False
+    proposal.checklist = _with_ticks(result.checklist or [], proposal.checklist)
+    proposal.checked_at = timezone.now()
     _finish(proposal, result)
     return True
 

@@ -9,7 +9,7 @@ import pytest
 from django.core.checks import run_checks
 
 from apps.ai.config.loader import resolve_role
-from apps.ai.exceptions import AIConfigError, StructuredOutputError
+from apps.ai.exceptions import AIConfigError, RequestTooLarge, StructuredOutputError
 from apps.ai.gemini import ChatGemini, GeminiError, inline_refs
 from apps.ai.graphs.budget import Budget
 from apps.ai.graphs.runtime import TaskRuntime
@@ -163,3 +163,44 @@ def test_fallback_settings_are_checked(settings):
     assert {"ai.W004", "ai.W005"} <= ids
     settings.AI_FALLBACK_PROVIDER = "nope"
     assert "ai.W003" in {message.id for message in run_checks()}
+
+
+def too_large(prompt):
+    return RequestTooLarge("Request too large for model on tokens per minute (TPM): Limit 8000")
+
+
+def test_a_request_too_large_for_groq_goes_to_the_fallback(monkeypatch, settings, fallback, web):
+    use_scripted_models(monkeypatch, settings, {"client_judge": too_large})
+    web.route(HOST, "/v1beta/models/gemini-flash:generateContent", lambda r: gemini_reply(VERDICTS))
+    runtime = TaskRuntime(budget=Budget({"max_tokens": 50_000, "max_wall_seconds": 60}))
+    verdicts = runtime.ask("client_judge", ClientVerdicts, organization="o", businesses="b")
+    assert verdicts.verdicts[0].fit == 30
+    assert runtime.models_used["client_judge"].endswith(" + gemini-flash")
+
+
+def test_a_request_too_large_is_not_retried_without_a_fallback(monkeypatch, settings):
+    models = use_scripted_models(monkeypatch, settings, {"client_judge": too_large})
+    with pytest.raises(StructuredOutputError) as error:
+        invoke_structured(build_chat_model(resolve_role("client_judge")), ["x"], ClientVerdicts)
+    assert isinstance(error.value.__cause__, RequestTooLarge)
+    assert len(models["client_judge"].calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("status", "raised"), [(413, RequestTooLarge), (400, groq.BadRequestError)]
+)
+def test_groq_names_its_request_too_large_refusal(monkeypatch, status, raised):
+    from langchain_groq import ChatGroq
+
+    from apps.ai.groq_chat import LeadlineChatGroq
+
+    response = httpx.Response(status, request=httpx.Request("POST", "https://api.groq.com/x"))
+    error_class = groq.BadRequestError if status == 400 else groq.APIStatusError
+
+    def refuse(self, *args, **kwargs):
+        raise error_class("Request too large", response=response, body={})
+
+    monkeypatch.setattr(ChatGroq, "_generate", refuse)
+    model = LeadlineChatGroq(model="m", api_key="gsk_test", max_retries=0)
+    with pytest.raises(raised):
+        model.invoke("hello")

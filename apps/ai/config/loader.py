@@ -311,6 +311,31 @@ def load_sources_file(path: Path = SOURCES_FILE) -> SourcesFile:
 # ---------------------------------------------------------------------------
 
 
+class TenderSettings(BaseModel):
+    """Bids: reading the tender's documents and checking company documents."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_documents: int = Field(default=3, ge=0, le=10)
+    max_document_mb: int = Field(default=15, ge=1, le=100)
+    max_document_chars: int = Field(default=20000, ge=1000)
+    checklist_items: int = Field(default=30, ge=1, le=60)
+    passages_per_item: int = Field(default=2, ge=0, le=5)
+
+
+class BidPlanSettings(BaseModel):
+    """Days before closing each step of a bid is due."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    clarifications: int = Field(default=7, ge=0, le=60)
+    bid_security: int = Field(default=7, ge=0, le=60)
+    documents: int = Field(default=5, ge=0, le=60)
+    draft: int = Field(default=3, ge=0, le=60)
+    review: int = Field(default=2, ge=0, le=60)
+    submit: int = Field(default=1, ge=0, le=60)
+
+
 class ProposalSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -321,6 +346,8 @@ class ProposalSettings(BaseModel):
     max_call_chars: int = Field(ge=1000)
     max_concurrency: int = Field(ge=1, le=8)
     default_section_words: int = Field(ge=50, le=3000)
+    tender: TenderSettings = Field(default_factory=TenderSettings)
+    bid_plan: BidPlanSettings = Field(default_factory=BidPlanSettings)
 
 
 @cache

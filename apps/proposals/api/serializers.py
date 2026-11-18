@@ -1,6 +1,10 @@
 from rest_framework import serializers
 
-from ..choices import ProposalJob, ProposalStatus
+from apps.ai.config.loader import load_proposals_file
+from apps.organizations.choices import OpportunityType
+
+from ..bid_plan import bid_plan
+from ..choices import ChecklistStatus, ProposalJob, ProposalStatus
 from ..models import Proposal, ProposalEvent, ProposalVersion
 
 
@@ -61,6 +65,43 @@ class OpportunitySummarySerializer(serializers.Serializer):
     funder = serializers.CharField()
     deadline = serializers.DateTimeField(allow_null=True)
     status = serializers.CharField()
+    opportunity_type = serializers.CharField()  # "tender" proposals are bids
+
+
+class ChecklistDocumentSerializer(serializers.Serializer):
+    id = serializers.CharField()
+    title = serializers.CharField()
+
+
+class ChecklistItemSerializer(serializers.Serializer):
+    key = serializers.CharField()
+    n = serializers.IntegerField()
+    code = serializers.CharField(allow_blank=True, default="")
+    requirement = serializers.CharField()
+    kind = serializers.CharField(default="other")
+    status = serializers.ChoiceField(choices=ChecklistStatus.choices)
+    documents = ChecklistDocumentSerializer(many=True, default=list)
+    note = serializers.CharField(allow_blank=True, default="")
+    done = serializers.BooleanField(default=False)
+    done_at = serializers.CharField(allow_null=True, default=None)
+
+
+class BidPlanStepSerializer(serializers.Serializer):
+    key = serializers.CharField()
+    title = serializers.CharField()
+    due = serializers.DateField()
+    time = serializers.CharField(allow_blank=True)
+    from_tender = serializers.BooleanField()
+    note = serializers.CharField(allow_blank=True)
+    state = serializers.ChoiceField(choices=["done", "past", "today", "upcoming"])
+
+
+class BidPlanSerializer(serializers.Serializer):
+    closes_at = serializers.DateTimeField()
+    days_left = serializers.IntegerField()
+    closed = serializers.BooleanField()
+    tight = serializers.BooleanField(help_text="Some steps should already be done.")
+    steps = BidPlanStepSerializer(many=True)
 
 
 class JobSerializer(serializers.Serializer):
@@ -100,6 +141,7 @@ class ProposalSummarySerializer(serializers.ModelSerializer):
                 "funder": opportunity.funder,
                 "deadline": opportunity.deadline,
                 "status": opportunity.status,
+                "opportunity_type": opportunity.opportunity_type,
             }
         ).data
 
@@ -133,6 +175,8 @@ class ProposalKnowledgeSerializer(serializers.Serializer):
 class ProposalSerializer(ProposalSummarySerializer):
     sections = serializers.SerializerMethodField()
     knowledge = serializers.SerializerMethodField()
+    checklist = ChecklistItemSerializer(many=True, read_only=True)
+    bid_plan = serializers.SerializerMethodField()
 
     class Meta(ProposalSummarySerializer.Meta):
         fields = [
@@ -140,6 +184,9 @@ class ProposalSerializer(ProposalSummarySerializer):
             "sections",
             "knowledge",
             "requirements",
+            "checklist",
+            "checked_at",
+            "bid_plan",
             "review",
             "prompt_versions",
             "models_used",
@@ -167,6 +214,19 @@ class ProposalSerializer(ProposalSummarySerializer):
                 {"id": fid, "name": names[fid]} for fid in scope.folder_ids if fid in names
             ],
         }
+
+    def get_bid_plan(self, proposal) -> BidPlanSerializer(allow_null=True):
+        """Tenders: the steps to a submitted bid, counted back from closing."""
+        opportunity = proposal.opportunity
+        if opportunity.opportunity_type != OpportunityType.TENDER:
+            return None
+        plan = bid_plan(
+            opportunity,
+            proposal.requirements,
+            proposal.checklist or [],
+            load_proposals_file().bid_plan,
+        )
+        return BidPlanSerializer(plan).data if plan else None
 
     def get_sections(self, proposal) -> SectionSerializer(many=True):
         """The current version's sections ([] before the first draft)."""
@@ -200,3 +260,7 @@ class SectionEditSerializer(serializers.Serializer):
 
 class SectionRewriteSerializer(serializers.Serializer):
     instructions = serializers.CharField(max_length=1000, allow_blank=True, required=False)
+
+
+class ChecklistTickSerializer(serializers.Serializer):
+    done = serializers.BooleanField()

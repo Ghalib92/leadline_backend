@@ -1,6 +1,6 @@
 """Structured outputs of the Proposal Writer. Field descriptions go to the model."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class RequiredSection(BaseModel):
@@ -35,6 +35,107 @@ class ProposalRequirements(BaseModel):
         default_factory=list, description="Language, length, template or submission rules."
     )
     deadline: str = Field(default="", description="Closing date as YYYY-MM-DD, if stated.")
+
+
+REQUIREMENT_KINDS = ("certificate", "form", "security", "experience", "financial", "other")
+DATE_KINDS = ("clarification", "meeting", "site_visit", "closing", "opening", "other")
+CHECKLIST_STATUSES = ("ready", "check", "missing", "prepare")
+
+
+def _one_of(value, allowed, default):
+    value = str(value or "").strip().lower().replace(" ", "_").replace("-", "_")
+    return value if value in allowed else default
+
+
+class MandatoryRequirement(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    code: str = Field(default="", max_length=20, description="The tender's own code, e.g. MR1.")
+    requirement: str = Field(
+        max_length=400, description="What must be submitted or met, as the tender words it."
+    )
+    kind: str = Field(
+        default="other",
+        description=(
+            "certificate (a document the firm already holds: registration, tax compliance, "
+            "licences, AGPO), form (filled in for this bid: forms, declarations, power of "
+            "attorney), security (bid security or bond), experience (past contracts, "
+            "references, staff and CVs), financial (audited accounts, bank statements), other."
+        ),
+    )
+
+    @field_validator("kind", mode="before")
+    @classmethod
+    def _kind(cls, value):
+        return _one_of(value, REQUIREMENT_KINDS, "other")
+
+
+class KeyDate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    event: str = Field(max_length=150, description="e.g. 'Clarification requests close'.")
+    date: str = Field(description="YYYY-MM-DD.")
+    time: str = Field(default="", description="HH:MM (24h), if stated.")
+    kind: str = Field(
+        default="other", description="clarification, meeting, site_visit, closing, opening, other."
+    )
+
+    @field_validator("kind", mode="before")
+    @classmethod
+    def _kind(cls, value):
+        return _one_of(value, DATE_KINDS, "other")
+
+
+class TenderRequirements(ProposalRequirements):
+    """A tender's requirements: the call's fields plus what a bid must comply with."""
+
+    reference: str = Field(default="", description="The tender number.")
+    mandatory_requirements: list[MandatoryRequirement] = Field(
+        default_factory=list,
+        description=(
+            "Every mandatory and eligibility requirement, in the tender's order. A bid "
+            "missing one is rejected before scoring."
+        ),
+    )
+    key_dates: list[KeyDate] = Field(
+        default_factory=list,
+        description="Clarification deadline, pre-bid meeting, site visit, closing, opening.",
+    )
+    submission: list[str] = Field(
+        default_factory=list,
+        description="How and where to submit: portal or address, copies, envelopes, binding.",
+    )
+    pass_mark: str = Field(default="", description="The technical pass mark, if stated.")
+    bid_security: str = Field(default="", description="Amount and form of bid security.")
+    validity: str = Field(default="", description="How long bids must stay valid.")
+
+
+class ChecklistVerdict(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    n: int = Field(description="The requirement's number.")
+    status: str = Field(
+        description=(
+            "ready (a company document covers it), check (a document may cover it; a person "
+            "must confirm, e.g. its expiry), missing (no company document covers it), "
+            "prepare (made for this bid: forms, declarations, bid security)."
+        )
+    )
+    document_ids: list[str] = Field(
+        default_factory=list, description="IDs of the company documents that cover it."
+    )
+    note: str = Field(default="", max_length=300, description="One short sentence, if useful.")
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _status(cls, value):
+        return _one_of(value, CHECKLIST_STATUSES, "check")
+
+
+class BidChecklist(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    items: list[ChecklistVerdict] = Field(description="One verdict per requirement.")
 
 
 class OutlineSection(BaseModel):

@@ -7,6 +7,8 @@ named by AI_LLM_PROVIDER builds the model.
 With AI_FALLBACK_PROVIDER set (and a FALLBACK_<TIER>_MODEL for the tier), a call the
 primary provider refuses for its rate limit, or can't answer (down, timed out), is
 sent to the fallback model instead, so a run doesn't stop at a free tier's daily cap.
+So is a request too large for the primary's plan (Groq's free tier: one request may
+not exceed the tokens-per-minute limit).
 """
 
 import logging
@@ -17,7 +19,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.runnables.fallbacks import RunnableWithFallbacks
 
 from apps.ai.config.loader import ResolvedModel, resolve_role
-from apps.ai.exceptions import AIConfigError
+from apps.ai.exceptions import AIConfigError, RequestTooLarge
 
 logger = logging.getLogger(__name__)
 ProviderFactory = Callable[[ResolvedModel], BaseChatModel]
@@ -78,8 +80,9 @@ def _fallback_for(resolved: ResolvedModel) -> BaseChatModel | None:
 
 
 def _fallback_errors() -> tuple[type[BaseException], ...]:
-    """What the primary may fail with that a fallback can fix: rate limits, outages,
-    timeouts. A bad answer or a bad request is not among them."""
+    """What the primary may fail with that a fallback can fix: rate limits, requests
+    too large for the plan, outages, timeouts. A bad answer or another bad request is
+    not among them."""
     import groq
 
     from apps.ai.gemini import GeminiError
@@ -88,6 +91,7 @@ def _fallback_errors() -> tuple[type[BaseException], ...]:
         groq.RateLimitError,
         groq.APIConnectionError,
         groq.InternalServerError,
+        RequestTooLarge,
         GeminiError,
     )
 
@@ -104,7 +108,7 @@ class ChatWithFallback(RunnableWithFallbacks):
 
 
 def _build_groq(resolved: ResolvedModel) -> BaseChatModel:
-    from langchain_groq import ChatGroq
+    from apps.ai.groq_chat import LeadlineChatGroq
 
     if not settings.GROQ_API_KEY:
         raise AIConfigError("GROQ_API_KEY is not set.")
@@ -115,7 +119,7 @@ def _build_groq(resolved: ResolvedModel) -> BaseChatModel:
         "timeout": resolved.timeout_seconds,
         "max_retries": resolved.max_retries,
     }
-    return ChatGroq(
+    return LeadlineChatGroq(
         model=resolved.model,
         api_key=settings.GROQ_API_KEY,
         **{key: value for key, value in optional.items() if value is not None},

@@ -2,10 +2,13 @@
 
 from apps.discovery.selectors import dossier_content, profile_context
 from apps.knowledge.scope import KnowledgeScope
+from apps.organizations.choices import OpportunityType, ProcessingStatus
 
 from .models import Proposal
 
 EVENTS_PAGE_SIZE = 500
+# Company documents listed for a bid's checklist (titles only), newest first.
+CHECKLIST_DOCUMENTS = 150
 
 
 def proposals_for(organization):
@@ -45,6 +48,9 @@ def writer_inputs(proposal) -> dict:
         "profile": profile_context(organization),
         "dossier": dossier_content(organization),
         "knowledge": knowledge_scope(proposal)[0].to_config(),
+        "documents": company_documents(organization)
+        if opportunity.opportunity_type == OpportunityType.TENDER
+        else [],
         "opportunity": {
             "title": opportunity.title,
             "funder": opportunity.funder,
@@ -59,8 +65,27 @@ def writer_inputs(proposal) -> dict:
             "location": opportunity.location,
             "source_url": opportunity.source_url,
             "source_name": opportunity.source_name,
+            "tender": opportunity.tender or {},
         },
     }
+
+
+def company_documents(organization) -> list[dict]:
+    """Every document of the organization, for a bid's checklist: certificates are
+    often scans with no readable text, so titles and categories matter."""
+    documents = organization.documents.select_related("folder").order_by("-created_at", "-id")[
+        :CHECKLIST_DOCUMENTS
+    ]
+    return [
+        {
+            "id": document.pk,
+            "title": document.title,
+            "folder": document.folder.name if document.folder_id else "",
+            "category": document.get_category_display() if document.category else "",
+            "readable": document.processing_status == ProcessingStatus.PROCESSED,
+        }
+        for document in documents
+    ]
 
 
 def _plain(value):

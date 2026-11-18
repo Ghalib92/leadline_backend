@@ -26,7 +26,9 @@ def run_proposal_job(proposal_id):
         return
     started_at = proposal.job_started_at
     emitter = ProposalEventRecorder(proposal.pk, started_at)
-    step = "draft" if proposal.job == ProposalJob.SECTION else "requirements"
+    step = {ProposalJob.SECTION: "draft", ProposalJob.CHECKLIST: "checklist"}.get(
+        proposal.job, "requirements"
+    )
     try:
         writer = get_writer(proposal.runner or settings.PROPOSAL_RUNNER)
         request = ProposalRequest(
@@ -46,6 +48,9 @@ def run_proposal_job(proposal_id):
                 instructions=proposal.job_instructions,
             )
             services.save_section(proposal.pk, started_at, result)
+        elif proposal.job == ProposalJob.CHECKLIST:
+            result = writer.check_documents(request, emitter, requirements=proposal.requirements)
+            services.save_checklist(proposal.pk, started_at, result)
         else:
             result = writer.draft(request, emitter)
             services.save_draft(proposal.pk, started_at, result)

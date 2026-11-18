@@ -39,6 +39,11 @@ class Proposal(UUIDTimestampedModel):
     version = models.PositiveIntegerField(default=0)  # current version number; 0 = none yet
     requirements = models.JSONField(default=dict, blank=True)  # what the call asks for
     review = models.JSONField(null=True, blank=True)  # the AI's readiness check
+    # Tenders: each mandatory requirement against the company's documents, from the
+    # AI ([{key, n, code, requirement, kind, status, documents, note}]), plus `done`,
+    # which a person ticks when the item is in hand for this bid.
+    checklist = models.JSONField(default=list, blank=True)
+    checked_at = models.DateTimeField(null=True, blank=True)  # last checklist
     warning = models.CharField(max_length=500, blank=True, default="")  # last job was partial
     error = models.CharField(max_length=500, blank=True, default="")  # last job failed
     runner = models.CharField(max_length=30, blank=True, default="")

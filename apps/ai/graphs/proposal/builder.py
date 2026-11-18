@@ -5,7 +5,7 @@ from langgraph.graph import END, START, StateGraph
 from . import nodes
 from .state import ProposalState
 
-STEPS = ("requirements", "outline", "evidence", "draft", "review")
+STEPS = ("requirements", "checklist", "outline", "evidence", "draft", "review")
 
 
 def build_graph(runtime):

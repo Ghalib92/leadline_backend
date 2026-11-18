@@ -276,11 +276,11 @@ def internet(web):
             json={
                 "notices": [
                     {
-                        "ND": "TED-1",
-                        "TI": "Data Training Tender",
-                        "DT": "2030-12-01",
-                        "CA_NAME": "EU Buyer",
-                        "CONTENT": LONG,
+                        "publication-number": "TED-1",
+                        "notice-title": {"eng": "Data Training Tender"},
+                        "deadline-receipt-tender-date-lot": ["2030-12-01+01:00"],
+                        "buyer-name": {"eng": ["EU Buyer"]},
+                        "description-lot": {"eng": [LONG]},
                     }
                 ]
             },

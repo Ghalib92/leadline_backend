@@ -29,5 +29,7 @@ urlpatterns = [
         views.SectionRewriteView.as_view(),
         name="section-rewrite",
     ),
+    path(f"{P}/checklist/recheck/", views.ChecklistRecheckView.as_view(), name="checklist-recheck"),
+    path(f"{P}/checklist/<slug:key>/", views.ChecklistItemView.as_view(), name="checklist-item"),
     path(f"{P}/export/", views.ProposalExportView.as_view(), name="export"),
 ]

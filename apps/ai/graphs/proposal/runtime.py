@@ -6,6 +6,7 @@ from apps.ai.events import RunEventEmitter
 from apps.ai.graphs.budget import Budget
 from apps.ai.graphs.proposal_runner import ProposalRequest
 from apps.ai.graphs.runtime import AgentRuntimeMixin, organization_brief
+from apps.ai.tools.documents import DocumentReader
 from apps.ai.tools.fetch.base import PageFetcher
 
 
@@ -16,6 +17,7 @@ class ProposalRuntime(AgentRuntimeMixin):
     settings: ProposalSettings
     budget: Budget
     fetcher: PageFetcher
+    documents: DocumentReader | None = None  # tender documents (PDF, Word)
     warnings: list[str] = field(default_factory=list)
     prompt_versions: dict = field(default_factory=dict)
     models_used: dict = field(default_factory=dict)
