@@ -438,3 +438,11 @@ Gemini as backup, Temporal for background jobs, React Router on the front end.
   now check every fallback model with a real call (`ai_ping`) when keys change.
 - Google answers a wrong key with HTTP 400 ("API_KEY_INVALID"), not 401 or 403, so
   the switch to the backup key didn't fire until that answer was recognised.
+
+### Each AI grader preferred its own family
+- To decide which model writes bids, the same tender was drafted by both and graded
+  by both. Groq's grader gave its own draft 70 and Gemini's 64; Gemini's gave its own
+  84 and Groq's 72. The overall scores said nothing. What both graders agreed on was
+  honesty, and reading the drafts confirmed it: one invented "completed on time and
+  within budget", the other wrote a [TODO]. Lesson: an AI judge needs a neutral
+  provider and a reading by a person, and one score per criterion beats one total.
