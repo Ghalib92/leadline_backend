@@ -1,5 +1,10 @@
-# Every local process in one terminal: `make dev`. Postgres must already be running.
-# Ctrl+C stops everything.
-web: python manage.py runserver
+# All of Leadline locally, in one terminal: `make dev` (from leadline_backend).
+# Postgres must already be running. Then open http://localhost:3010. Ctrl+C stops all.
+#
+# Ports 8010 (API) and 3010 (UI), not 8000/3000: other projects on this machine use
+# those. The overrides below point the UI at the API and let the browser send files
+# straight to it (CORS); your .env files stay as they are.
+api: CORS_ALLOWED_ORIGINS=http://localhost:3010 CSRF_TRUSTED_ORIGINS=http://localhost:3010 FRONTEND_URL=http://localhost:3010 python manage.py runserver 8010
 temporal: python manage.py temporal_dev_server
-worker: python manage.py temporal_worker --wait 60
+worker: FRONTEND_URL=http://localhost:3010 python manage.py temporal_worker --wait 60
+ui: cd ../leadline-ui && API_URL=http://127.0.0.1:8010/api/v1 pnpm exec react-router dev --port 3010
