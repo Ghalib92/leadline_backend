@@ -7,6 +7,14 @@ filter reliably, so extend these lists instead of accepting arbitrary strings.
 from django.db import models
 
 
+class AccountType(models.TextChoices):
+    """Who the workspace is for. A candidate's workspace is their own: one member, the
+    jobs goal, their CV among its documents."""
+
+    ORGANIZATION = "organization", "Business or organization"
+    CANDIDATE = "candidate", "Job seeker"
+
+
 class OrganizationType(models.TextChoices):
     NGO = "ngo", "Non-profit / NGO"
     COMMUNITY_BASED = "community_based", "Community-based organization"
@@ -51,6 +59,12 @@ class Goal(models.TextChoices):
     CLIENTS = "clients", "Clients"
     TENDERS = "tenders", "Tenders"
     GRANTS = "grants", "Grants & funding"
+    JOBS = "jobs", "Jobs"  # candidates only
+
+
+# Goals for each kind of account: a candidate looks for jobs, organizations never do.
+CANDIDATE_GOALS = (Goal.JOBS,)
+ORGANIZATION_GOALS = (Goal.CLIENTS, Goal.TENDERS, Goal.GRANTS)
 
 
 class OpportunityType(models.TextChoices):
@@ -69,6 +83,7 @@ class OpportunityType(models.TextChoices):
     SPONSORSHIP = "sponsorship", "Sponsorship"
     IN_KIND = "in_kind", "In-kind support"
     CONFERENCE = "conference", "Conference / event"
+    JOB = "job", "Job"
     OTHER = "other", "Other"
     # A business that could buy what the organization sells (the Clients goal).
     CLIENT = "client", "Client lead"
@@ -255,3 +270,28 @@ class TenderEligibility(models.TextChoices):
     REGISTERED_SUPPLIER = "registered_supplier", "Registered government supplier"
     TAX_COMPLIANT = "tax_compliant", "Valid tax compliance certificate"
     INTERNATIONAL_BIDDER = "international_bidder", "Can bid on international tenders"
+
+
+# ---- Job preferences (candidates) ----
+
+
+class Seniority(models.TextChoices):
+    INTERN = "intern", "Internship or attachment"
+    ENTRY = "entry", "Entry level / graduate"
+    MID = "mid", "Mid level"
+    SENIOR = "senior", "Senior"
+    LEAD = "lead", "Lead or manager"
+    EXECUTIVE = "executive", "Director or executive"
+
+
+class EmploymentType(models.TextChoices):
+    FULL_TIME = "full_time", "Full-time"
+    PART_TIME = "part_time", "Part-time"
+    CONTRACT = "contract", "Contract or freelance"
+    INTERNSHIP = "internship", "Internship"
+
+
+class Workplace(models.TextChoices):
+    REMOTE = "remote", "Remote"
+    HYBRID = "hybrid", "Hybrid"
+    ONSITE = "onsite", "On-site"

@@ -133,4 +133,5 @@ def test_source_categories_for_the_form(auth_client, organization):
         "procurement",
         "news",
         "businesses",
+        "jobs",
     }

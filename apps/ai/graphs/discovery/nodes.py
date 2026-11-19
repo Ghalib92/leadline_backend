@@ -10,7 +10,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, time
 from decimal import Decimal
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 from django.utils import timezone
 
@@ -21,7 +21,7 @@ from apps.ai.agents.supervisor import plan_searches
 from apps.ai.agents.verifier import verify_listing
 from apps.ai.exceptions import AIConfigError, StructuredOutputError
 from apps.ai.graphs.budget import BudgetExhausted
-from apps.ai.schemas.discovery import Candidate
+from apps.ai.schemas.discovery import Candidate, VerifiedOpportunity
 from apps.ai.tools.decisions import past_decisions
 from apps.ai.tools.fetch.base import FetchError
 from apps.ai.tools.knowledge import NO_DOCUMENTS, company_evidence
@@ -187,6 +187,18 @@ def search(runtime, state: DiscoveryState) -> DiscoveryState:
             continue
         if source_name not in searched:
             searched.append(source_name)
+        spec = runtime.source_specs.get(source_name)
+        if spec is not None and spec.options.get("list_pages"):
+            # Job boards answer with pages of many adverts: read the best ones and
+            # take each advert, instead of asking the researcher about list pages.
+            try:
+                found = _adverts_from_lists(runtime, source, spec.options, hits, seen)
+            except BudgetExhausted as exc:
+                runtime.warn("search", str(exc))
+                stop, exhausted = (str(exc), False) if exc.hard else ("", True)
+                break
+            leads += found
+            continue
         fresh = 0
         for hit in hits:
             key = normalize_url(hit.url)
@@ -283,6 +295,55 @@ def search(runtime, state: DiscoveryState) -> DiscoveryState:
     }
 
 
+def _adverts_from_lists(runtime, source, options, hits, seen) -> list:
+    """The adverts on a job board's list pages, each as a lead of its own (picked, like
+    an organization's own source's calls). Raises BudgetExhausted."""
+    pages = int(options.get("list_pages", 2))
+    per_page = int(options.get("adverts_per_page", 6))
+    leads = []
+    for hit in hits[:pages]:
+        runtime.budget.use_page()
+        runtime.emit(
+            "search",
+            f"Reading the adverts on {hit.title[:120]}",
+            tool="source_reader",
+            url=hit.url,
+            source=source.domain,
+        )
+        try:
+            page = runtime.fetcher.fetch(hit.url)
+            extraction = read_source_page(
+                runtime,
+                source_url=hit.url,
+                page_text=page.text,
+                links=page.links,
+                source_label=source.domain,
+            )
+        except (FetchError, StructuredOutputError) as exc:
+            runtime.warn(
+                "search", f"Could not read {hit.url[:120]}: {exc}", partial=False, url=hit.url
+            )
+            continue
+        found = 0
+        for call in extraction.calls[:per_page]:
+            url = urljoin(hit.url, call.url)
+            key = normalize_url(url)
+            if key in seen:
+                continue
+            seen.add(key)
+            found += 1
+            leads.append(
+                Lead(
+                    source="org_source",
+                    domain=urlsplit(url).netloc.removeprefix("www."),
+                    hit=SearchHit(title=call.title, url=url, snippet=call.summary),
+                    reason=f"Advertised on {source.domain}",
+                )
+            )
+        runtime.emit("search", f"{found} advert(s) found", source=source.domain)
+    return leads
+
+
 def screen(runtime, state: DiscoveryState) -> DiscoveryState:
     leads = state.get("leads", [])
     if _stopped(state) or not leads:
@@ -354,6 +415,10 @@ def read(runtime, state: DiscoveryState) -> DiscoveryState:
 
     def work(lead):
         source = runtime.sources.get(lead.source)
+        if source is not None and hasattr(source, "verified_listing"):
+            # A whole posting from its own system (career pages): its facts are read in
+            # code, not by the verifier model.
+            return VerifiedOpportunity.model_validate(source.verified_listing(lead.hit))
         page = source.read(lead.hit) if source else None
         text = page.text if page else lead.hit.content
         if len(text or "") < 200:  # a snippet is not enough to verify anything
@@ -578,6 +643,11 @@ def _facts(lead) -> dict:
             for key, value in tender.items()
             if key not in ("documents", "buyer_contact", "source")
         }
+    job = lead.hit.extra.get("job") or {}
+    if job:
+        # The posting's facts; links are for people.
+        facts["job"] = {k: v for k, v in job.items() if k not in ("url", "apply_url", "system")}
+        facts["description"] = lead.hit.content[:4000]
     if deadline:
         facts["days_to_close"] = (deadline - timezone.localdate()).days
     return {key: value for key, value in facts.items() if value not in ("", None, [])}
@@ -641,6 +711,7 @@ def _candidate(lead, verdict) -> Candidate:
             "checked_on": date.today().isoformat(),
         },
         tender=lead.hit.extra.get("tender") or {},
+        job=lead.hit.extra.get("job") or {},
     )
 
 

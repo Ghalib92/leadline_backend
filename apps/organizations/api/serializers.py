@@ -9,20 +9,25 @@ from rest_framework import serializers
 from apps.authentication.models import User
 
 from ..choices import (
+    AccountType,
     BusinessCategory,
     BusinessSize,
     BuyerType,
     Eligibility,
+    EmploymentType,
     GeographicScope,
     Goal,
     LeadSignal,
     OpportunityType,
     Region,
+    Seniority,
     TenderCategory,
     TenderEligibility,
+    Workplace,
 )
 from ..models import (
     ClientBrief,
+    JobBrief,
     KnowledgeFolder,
     OpportunityPreferences,
     Organization,
@@ -108,10 +113,13 @@ class OrganizationWriteSerializer(serializers.ModelSerializer):
         child=serializers.RegexField(r"^[a-zA-Z]{2}$", max_length=2), max_length=30
     )
     goals = UniqueListField(child=serializers.ChoiceField(choices=Goal.choices), max_length=3)
+    # Set when the workspace is created; a job seeker's is their own.
+    account_type = serializers.ChoiceField(choices=AccountType.choices, required=False)
 
     class Meta:
         model = Organization
         fields = [
+            "account_type",
             "name",
             "legal_name",
             "organization_type",
@@ -452,6 +460,55 @@ class ClientBriefSerializer(serializers.ModelSerializer):
                 seen.add(key)
                 services.append({**service, "name": service["name"].strip()})
         return services
+
+
+class JobBriefSerializer(serializers.ModelSerializer):
+    headline = serializers.CharField(max_length=200, allow_blank=True, required=False)
+    target_roles = tags()
+    seniority = choices(Seniority)
+    employment_types = choices(EmploymentType)
+    workplaces = choices(Workplace)
+    target_countries = countries()
+    target_cities = tags()
+    skills = tags(100)
+    years_experience = serializers.IntegerField(
+        min_value=0, max_value=60, allow_null=True, required=False
+    )
+    salary_min = serializers.IntegerField(min_value=0, allow_null=True, required=False)
+    salary_currency = serializers.RegexField(r"^[A-Za-z]{3}$", required=False)
+    companies = UniqueListField(
+        child=serializers.CharField(max_length=300), max_length=50, required=False
+    )
+    excluded_keywords = tags(100)
+    notes = serializers.CharField(max_length=LONG_TEXT, allow_blank=True, required=False)
+
+    class Meta:
+        model = JobBrief
+        fields = [
+            "headline",
+            "target_roles",
+            "seniority",
+            "employment_types",
+            "workplaces",
+            "target_countries",
+            "target_cities",
+            "skills",
+            "years_experience",
+            "salary_min",
+            "salary_currency",
+            "companies",
+            "excluded_keywords",
+            "notes",
+            "updated_at",
+        ]
+        read_only_fields = ["updated_at"]
+
+    def validate_salary_currency(self, value):
+        return value.upper()
+
+    def validate_companies(self, value):
+        """Career page links (or company names): each kept once, trimmed."""
+        return list(dict.fromkeys(item.strip() for item in value if item.strip()))
 
 
 class TenderBriefSerializer(serializers.ModelSerializer):

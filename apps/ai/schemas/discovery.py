@@ -29,6 +29,9 @@ class Candidate(BaseModel):
     business: dict = {}
     # A tender's structured facts (apps.ai.tools.sources.ppip.tender_details()).
     tender: dict = {}
+    # A job's facts from its career page (apps.ai.tools.sources.careers): company,
+    # location, workplace, employment type, salary, apply link.
+    job: dict = {}
 
 
 # ---------------------------------------------------------------------------

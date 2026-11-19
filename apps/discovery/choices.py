@@ -19,6 +19,7 @@ class SourceCategory(models.TextChoices):
     PROCUREMENT = "procurement", "Procurement portals"
     NEWS = "news", "News & announcements"
     BUSINESSES = "businesses", "Business directories"
+    JOBS = "jobs", "Career pages and job boards"
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,9 @@ class GoalScope:
     opportunity_types: tuple[str, ...]
     sources: tuple[str, ...]
     runnable: bool = True
+    # The goal's own sources: always searched, whatever the organization's general
+    # search settings say (they are shared by every goal).
+    core_sources: tuple[str, ...] = ()
 
 
 TENDER_TYPES = (OpportunityType.TENDER, OpportunityType.RFP, OpportunityType.CONSULTANCY)
@@ -40,18 +44,28 @@ GOAL_SCOPES: dict[str, GoalScope] = {
         description="Businesses that could buy what you sell, with a reason they need it.",
         opportunity_types=(OpportunityType.CLIENT,),
         sources=(SourceCategory.BUSINESSES,),
+        core_sources=(SourceCategory.BUSINESSES,),
     ),
     Goal.TENDERS: GoalScope(
         description="Tenders, RFPs and consultancies to bid on.",
         opportunity_types=TENDER_TYPES,
         sources=(SourceCategory.WEB, SourceCategory.PROCUREMENT, SourceCategory.NEWS),
+        core_sources=(SourceCategory.PROCUREMENT,),
     ),
     Goal.GRANTS: GoalScope(
         description="Grants, fellowships, awards, investment, partnerships and programmes.",
         opportunity_types=tuple(
-            t for t in OpportunityType.values if t not in (*TENDER_TYPES, OpportunityType.CLIENT)
+            t
+            for t in OpportunityType.values
+            if t not in (*TENDER_TYPES, OpportunityType.CLIENT, OpportunityType.JOB)
         ),
         sources=(SourceCategory.WEB, SourceCategory.GRANTS, SourceCategory.NEWS),
+    ),
+    Goal.JOBS: GoalScope(
+        description="Jobs that fit your CV, from company career pages and job boards.",
+        opportunity_types=(OpportunityType.JOB,),
+        sources=(SourceCategory.JOBS, SourceCategory.WEB),
+        core_sources=(SourceCategory.JOBS,),
     ),
 }
 

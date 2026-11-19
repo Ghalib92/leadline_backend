@@ -24,6 +24,7 @@ LIST_LIMIT = 8
 KIND_LABELS = {
     OpportunityType.CLIENT: ("client lead", "client leads"),
     OpportunityType.TENDER: ("tender", "tenders"),
+    OpportunityType.JOB: ("job", "jobs"),
 }
 
 

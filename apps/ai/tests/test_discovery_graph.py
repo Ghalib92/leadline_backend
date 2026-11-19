@@ -308,7 +308,7 @@ def test_a_full_run(monkeypatch, settings, internet, discovery_settings):
     assert outcome.prompt_versions == {
         "supervisor": "supervisor/v1",
         "researcher": "researcher/v2",
-        "verifier": "verifier/v1",
+        "verifier": "verifier/v2",
         "judge": "judge/v3",
     }
     assert set(outcome.models_used) == {"supervisor", "researcher", "verifier", "judge"}

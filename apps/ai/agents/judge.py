@@ -18,10 +18,11 @@ from apps.ai.tools.decisions import format_decisions
 
 ROLE = "judge"
 TENDER_ROLE = "tender_judge"
+JOB_ROLE = "job_judge"
 
 
 def judge_role(goal: str) -> str:
-    return TENDER_ROLE if goal == "tenders" else ROLE
+    return {"tenders": TENDER_ROLE, "jobs": JOB_ROLE}.get(goal, ROLE)
 
 
 def judge_fit(

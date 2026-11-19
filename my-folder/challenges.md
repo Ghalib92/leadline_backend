@@ -10,6 +10,62 @@ Gemini as backup, Temporal for background jobs, React Router on the front end.
 
 ---
 
+## Stage 11 (18-19 Nov 2026): job seekers
+
+### "Find jobs from career pages" sounds easy, until you're in Kenya
+- **The plan:** read jobs straight from companies' career pages through the public APIs
+  of Greenhouse, Lever, Ashby and Workable. No scraping, no keys.
+- **What we found:** we probed 30 Kenyan and African tech companies (M-KOPA, Cellulant,
+  Twiga, Sendy, Wasoko, Paystack, Flutterwave…). Almost none use those four systems;
+  the Workable ones had zero open roles that week. The global boards that work (GitLab,
+  Canonical, Turing, Moniepoint) had 679 jobs, of which 13 a Kenyan could actually take.
+- **Fix:** keep the career pages for remote and pan-African employers, and add Kenyan
+  job boards (BrighterMonday, Fuzu, MyJobMag) for local volume.
+- **Lesson:** check where your users' market actually posts before you build the
+  integration everyone in Silicon Valley uses.
+
+### "Remote" doesn't mean "remote for you"
+- **What happened:** the first location filter let through "Remote, Bangalore",
+  "Remote, Israel" and "Remote, South Korea" for a Nairobi developer.
+- **Fix:** a remote job counts only if its location names nothing but "remote", or names
+  the candidate's own country or city, or an open region (EMEA, Africa, Global).
+- **Lesson:** a third of "remote" jobs are remote within one country.
+
+### Three bugs stacked on top of each other, each hiding the next
+- **Run 1: 0 jobs.** The search never touched the job sources. Each run's sources come
+  from the workspace's general search settings (web, grants, procurement by default),
+  narrowed to what the goal allows. For jobs, only "web" survived.
+  Fix: every goal now has core sources that are always searched.
+- **Run 2: 1 job.** Career pages were read, but matching demanded every search word,
+  and the job-board results were list pages ("Backend developer jobs in Kenya") that
+  the AI researcher is told to skip. Fix: looser matching, and list pages are read for
+  their individual adverts (the same reader an organization's own sources use).
+- **Run 3: 0 jobs from 15 adverts.** The adverts were found, read, and rejected one by
+  one: "This is a job posting, not a grant, tender or call for proposals." The fact
+  checker's rules were written for grants and tenders. Fix: it accepts a single job
+  advert when jobs are what's wanted.
+- **Run 4: 3 good jobs.** Backend Developer at Savannah Informatics (89%, one gap:
+  GraphQL), Software Engineer at Turing (68%, "4 years against 5+ required"), Python
+  Developer at Technobrain (65%). .NET and DevOps roles scored 12-38 and were dropped.
+- **Lesson:** when a pipeline returns nothing, there is rarely one bug. Fix one, run it
+  again, read the logs again.
+
+### The AI guessed the candidate's gender from his name
+- **What happened:** the reasons on a job said "his CV lists 4 years…" and "He holds a
+  BSc". Nobody told the model the candidate's gender; it inferred it from "Brian".
+- **Fix:** the job judge writes to the person ("your CV shows a BSc…") and never uses he,
+  she or they, or guesses anything from a name.
+- **Lesson:** an AI writing about a person makes assumptions you'd never write
+  yourself. Have it speak to them instead.
+
+### Don't spend AI calls on what code already knows
+- Career-page postings come as structured records: title, location, salary, apply link.
+  Asking a model to "verify" each one would have cost one call per job on a free tier
+  of about 200,000 tokens a day. Leadline builds those facts in code and only uses the
+  model where judgement is needed: fit against the CV, and the gaps.
+
+---
+
 ## Stage 10 (18 Nov 2026): stop guessing, go and look
 
 ### The fix for "the AI invents facts" was to go and get the fact

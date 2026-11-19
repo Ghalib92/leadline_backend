@@ -11,6 +11,7 @@ from apps.organizations.choices import Goal, OpportunityType
 from apps.organizations.selectors import (
     client_brief_for,
     goals_in_play,
+    job_brief_for,
     org_sources_for,
     preferences_for,
     tender_brief_for,
@@ -170,6 +171,27 @@ def client_brief_context(organization) -> dict:
     )
 
 
+def job_brief_context(organization) -> dict:
+    brief = job_brief_for(organization)
+    return _filled(
+        {
+            "headline": brief.headline,
+            "target_roles": brief.target_roles,
+            "seniority": _labels(org_choices.Seniority, brief.seniority),
+            "employment_types": _labels(org_choices.EmploymentType, brief.employment_types),
+            "workplaces": _labels(org_choices.Workplace, brief.workplaces),
+            "target_countries": brief.target_countries,
+            "target_cities": brief.target_cities,
+            "skills": brief.skills,
+            "years_experience": brief.years_experience,
+            "minimum_monthly_salary": (
+                f"{brief.salary_min:,} {brief.salary_currency}" if brief.salary_min else ""
+            ),
+            "notes": brief.notes,
+        }
+    )
+
+
 def tender_brief_context(organization) -> dict:
     brief = tender_brief_for(organization)
     return _filled(
@@ -229,6 +251,9 @@ def profile_context(organization, goal: str | None = None) -> dict:
     if Goal.CLIENTS in goals:
         facts["client_brief"] = client_brief_context(organization)
         excluded += client_brief_for(organization).excluded_keywords
+    if Goal.JOBS in goals:
+        facts["job_brief"] = job_brief_context(organization)
+        excluded += job_brief_for(organization).excluded_keywords
     facts["excluded_keywords"] = list(dict.fromkeys(excluded))
     return _filled(facts)
 
@@ -389,6 +414,8 @@ def search_keywords(organization, goal: str | None = None) -> list[str]:
         elif each == Goal.CLIENTS:
             # Kinds of customer are searched as categories (client_search_plan).
             words += client_brief_for(organization).customer_keywords
+        elif each == Goal.JOBS:
+            words += job_brief_for(organization).target_roles
     return list(dict.fromkeys(words))
 
 
@@ -411,6 +438,20 @@ def client_search_plan(organization, focus: dict | None = None) -> dict:
         "country": countries[0] if countries else "",
         # LeadSignal codes: the signs the organization wants (scored in apps.ai).
         "signals": list(brief.signals),
+    }
+
+
+def job_search_plan(organization) -> dict:
+    """What a job search reads and where the candidate can work: the companies they
+    follow (career pages), their countries (else their own), cities and workplaces."""
+    brief = job_brief_for(organization)
+    countries = brief.target_countries or ([organization.country] if organization.country else [])
+    cities = brief.target_cities or ([organization.city] if organization.city else [])
+    return {
+        "companies": list(brief.companies),
+        "countries": countries,
+        "cities": cities,
+        "workplaces": list(brief.workplaces),
     }
 
 
@@ -455,8 +496,10 @@ def search_limits(organization, agent=None) -> dict | None:
 
 
 def _org_search_goal(organization) -> str:
-    """The goal of an organization-wide search: clients when that is all it covers."""
-    return Goal.CLIENTS if org_search_goals(organization) == [Goal.CLIENTS] else ""
+    """The goal of an organization-wide search: clients or jobs when that is all it
+    covers (each has its own sources and judge); otherwise none (grants and tenders)."""
+    goals = org_search_goals(organization)
+    return goals[0] if goals in ([Goal.CLIENTS], [Goal.JOBS]) else ""
 
 
 def can_search(organization, agent=None) -> bool:
@@ -472,6 +515,15 @@ def _within(rows, allowed, origin):
     """Keep the rows whose value is allowed; with none left, all allowed values."""
     kept = [row for row in rows if row["value"] in allowed]
     return kept or [{"value": value, "origin": origin} for value in allowed]
+
+
+def _with_core(rows, organization, agent, origin):
+    """The goal's own sources first, then the rest: a jobs search always reads career
+    pages, even when the organization's general settings never mention them."""
+    goal = agent.goal if agent is not None else _org_search_goal(organization)
+    core = GOAL_SCOPES[goal].core_sources if goal in GOAL_SCOPES else ()
+    have = {row["value"] for row in rows}
+    return [{"value": value, "origin": origin} for value in core if value not in have] + rows
 
 
 def agent_scope(organization, agent=None) -> dict:
@@ -493,6 +545,7 @@ def agent_scope(organization, agent=None) -> dict:
         origin = AGENT if agent is not None else ORG
         sources = _within(sources, limits["sources"], origin)
         types = _within(types, limits["opportunity_types"], origin)
+        sources = _with_core(sources, organization, agent, origin)
     return {
         "goal": agent.goal if agent is not None else _org_search_goal(organization),
         "depth": {"value": depth or defaults.depth, "origin": AGENT if depth else ORG},

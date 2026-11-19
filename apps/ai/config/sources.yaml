@@ -93,6 +93,41 @@ sources:
     domain: Kenyan government sites
     covers: Tender notices on Kenyan public bodies' own websites (.go.ke) — counties, parastatals and agencies that also advertise outside the national portal.
     options: {include_domains: [go.ke]}
+  # Jobs: company career pages (public APIs, no keys) and Kenyan job boards.
+  career_pages:
+    adapter: careers
+    domain: career pages
+    covers: Jobs on companies' own career pages (Greenhouse, Lever, Ashby, Workable), including the companies the candidate follows. Search with job titles and skills, e.g. "backend developer python".
+    options:
+      cache_minutes: 30
+      max_boards: 30
+      workable_details: 15  # Workable lists no descriptions: each job's page is read too
+      # Companies hiring in Kenya or remotely, read for every candidate. Add any board
+      # as "greenhouse:<slug>", "lever:<slug>", "ashby:<slug>" or "workable:<slug>".
+      boards:
+        - greenhouse:moniepoint
+        - greenhouse:branch
+        - greenhouse:canonical
+        - greenhouse:gitlab
+        - greenhouse:turing
+        - lever:tala
+        - ashby:lemfi
+        - ashby:ampersand
+        - ashby:andela
+        - ashby:zapier
+        - workable:cellulant
+        - workable:twiga-foods
+        - workable:moniepoint
+  kenya_job_boards:
+    adapter: tavily
+    domain: Kenyan job boards
+    covers: Job adverts on Kenyan job boards (BrighterMonday, Fuzu, MyJobMag, Career Point Kenya). Search with a job title and a place, e.g. "data analyst Nairobi".
+    options:
+      include_domains: [brightermonday.co.ke, fuzu.com, myjobmag.co.ke, careerpointkenya.co.ke]
+      # Its results are pages of many adverts: the best 2 are read (a page each and a
+      # source_reader call) and up to 6 adverts taken from each.
+      list_pages: 2
+      adverts_per_page: 6
   ted_europa:
     adapter: ted_europa
     domain: ted.europa.eu
@@ -186,6 +221,9 @@ source_categories:
   businesses:
     label: Business directories
     sources: [google_maps, osm_places]
+  jobs:
+    label: Career pages and job boards
+    sources: [career_pages, kenya_job_boards]
 
 # Client (business) searches; budgets come from the run's depth above.
 clients:

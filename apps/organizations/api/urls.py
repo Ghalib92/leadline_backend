@@ -81,6 +81,11 @@ urlpatterns = [
         name="client-brief",
     ),
     path(
+        "<shortuuid:organization_id>/job-brief/",
+        views.JobBriefView.as_view(),
+        name="job-brief",
+    ),
+    path(
         "<shortuuid:organization_id>/tender-brief/",
         views.TenderBriefView.as_view(),
         name="tender-brief",

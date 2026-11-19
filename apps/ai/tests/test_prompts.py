@@ -79,7 +79,7 @@ def test_shipped_opportunity_analyst_prompt_renders():
 
 def test_shipped_source_reader_prompt_renders():
     v1 = load_prompt("source_reader")
-    assert v1.id == "source_reader/v1"
+    assert v1.id == "source_reader/v2"
     assert v1.variables == {
         "today",
         "source_url",

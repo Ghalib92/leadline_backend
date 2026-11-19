@@ -298,3 +298,11 @@ def test_a_long_missing_list_is_shortened():
     assert note.startswith("5 missing: Requirement 0. word word")
     assert note.endswith("…; and 2 more.")
     assert ".;" not in note and len(note) < 300
+
+
+def test_approving_a_job_writes_no_proposal(auth_client, organization):
+    job = make_opportunity(organization, title="Backend developer", opportunity_type="job")
+    approve(auth_client, organization, job)
+    assert not Proposal.objects.filter(opportunity=job).exists()
+    response = auth_client.post(url("for-opportunity", organization, opportunity_id=job.pk))
+    assert response.status_code == 409 and response.data["code"] == "job"

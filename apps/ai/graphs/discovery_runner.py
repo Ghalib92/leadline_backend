@@ -47,6 +47,8 @@ class DiscoveryRequest:
     knowledge: dict | None = None
     # Client searches: {customer_types, places, country} (selectors.client_search_plan).
     client_search: dict = field(default_factory=dict)
+    # Job searches: {companies, countries, cities, workplaces} (selectors.job_search_plan).
+    job_search: dict = field(default_factory=dict)
 
 
 class DiscoverySink(Protocol):

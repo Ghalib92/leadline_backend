@@ -20,9 +20,11 @@ from rest_framework.exceptions import PermissionDenied, Throttled, ValidationErr
 
 from apps.common.api.exceptions import Conflict
 
+from .choices import CANDIDATE_GOALS, ORGANIZATION_GOALS, AccountType
 from .emails import schedule_invitation, schedule_notification
 from .models import (
     ClientBrief,
+    JobBrief,
     KnowledgeFolder,
     OpportunityPreferences,
     Organization,
@@ -101,6 +103,21 @@ def _context_changed(organization):
 
 
 DEFAULT_FOLDER = "Company documents"
+CANDIDATE_FOLDER = "My documents"
+
+
+def _fit_goals(account_type, goals):
+    """A candidate looks for jobs; an organization for clients, tenders or grants."""
+    allowed = CANDIDATE_GOALS if account_type == AccountType.CANDIDATE else ORGANIZATION_GOALS
+    if goals is None:
+        return list(CANDIDATE_GOALS) if account_type == AccountType.CANDIDATE else None
+    outside = [goal for goal in goals if goal not in allowed]
+    if outside:
+        kind = "a job seeker's" if account_type == AccountType.CANDIDATE else "an organization's"
+        raise ValidationError(
+            {"goals": f"Not available for {kind} workspace: {', '.join(outside)}."}
+        )
+    return goals
 
 
 @transaction.atomic
@@ -112,14 +129,23 @@ def create_organization(*, actor, invitations=(), **data):
     """
     if not get_user_model().objects.filter(pk=actor.pk, is_active=True, is_verified=True).exists():
         raise PermissionDenied("An active account with a verified email is required.")
+    account_type = data.get("account_type", AccountType.ORGANIZATION)
+    goals = _fit_goals(account_type, data.pop("goals", None))
+    if goals is not None:
+        data["goals"] = goals
     organization = Organization.objects.create(created_by=actor, **data)
     OrganizationMembership.objects.create(organization=organization, user=actor, role="admin")
     OpportunityPreferences.objects.create(organization=organization)
     # A folder to upload into from the start (documents always live in a folder).
+    candidate = organization.is_candidate
     KnowledgeFolder.objects.create(
         organization=organization,
-        name=DEFAULT_FOLDER,
-        purpose="Company profile, registration and tax certificates, CVs and past work.",
+        name=CANDIDATE_FOLDER if candidate else DEFAULT_FOLDER,
+        purpose=(
+            "Your CV, certificates and work samples."
+            if candidate
+            else "Company profile, registration and tax certificates, CVs and past work."
+        ),
         created_by=actor,
     )
     _event(organization, actor, "organization.created")
@@ -138,6 +164,8 @@ def update_organization(*, organization_id, actor, **data):
     organization = _locked_organization(organization_id, actor)
     if set(data) - PROFILE_FIELDS:
         raise ValidationError("Unsupported organization fields.")
+    if "goals" in data:
+        data["goals"] = _fit_goals(organization.account_type, data["goals"])
     changed = []
     for field, value in data.items():
         if getattr(organization, field) != value:
@@ -566,6 +594,14 @@ def update_client_brief(*, organization_id, actor, **data):
         organization_id=organization_id,
         actor=actor,
         data=data,
+    )
+
+
+@transaction.atomic
+def update_job_brief(*, organization_id, actor, **data):
+    """What a candidate looks for; Jobs agents read it on their next run."""
+    return _update_brief(
+        JobBrief, "job_brief.updated", organization_id=organization_id, actor=actor, data=data
     )
 
 

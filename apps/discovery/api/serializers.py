@@ -4,7 +4,13 @@ from rest_framework import serializers
 
 from apps.ai.config.loader import load_sources_file
 from apps.knowledge.scope import KnowledgeScope
-from apps.organizations.choices import BusinessCategory, Goal, OpportunityType
+from apps.organizations.choices import (
+    CANDIDATE_GOALS,
+    ORGANIZATION_GOALS,
+    BusinessCategory,
+    Goal,
+    OpportunityType,
+)
 from apps.organizations.models import OrganizationMembership
 
 from ..choices import (
@@ -250,7 +256,10 @@ class RunSettingsSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(GoalOptionSerializer(many=True))
     def get_goals(self, run_settings) -> list[dict]:
-        """Every goal with the types and sources its agents use, for the agent forms."""
+        """The goals this account can use (jobs for a job seeker, the rest for an
+        organization), with the types and sources their agents use, for the forms."""
+        candidate = run_settings.organization.is_candidate
+        allowed = CANDIDATE_GOALS if candidate else ORGANIZATION_GOALS
         return [
             {
                 "key": goal.value,
@@ -261,6 +270,7 @@ class RunSettingsSerializer(serializers.ModelSerializer):
                 "available": GOAL_SCOPES[goal].runnable,
             }
             for goal in Goal
+            if goal in allowed
         ]
 
 

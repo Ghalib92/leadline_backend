@@ -94,6 +94,7 @@ class OpportunitySerializer(serializers.ModelSerializer):
             "requirements",
             "business",
             "tender",
+            "job",
             "brief",
             "brief_status",
             "brief_sources",

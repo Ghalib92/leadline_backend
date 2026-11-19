@@ -60,6 +60,9 @@ class Opportunity(UUIDTimestampedModel):
     # Tenders from structured portals (tenders.go.ke): reference, buyer, category,
     # closing time, fee, bid security, AGPO reservation, documents, buyer's contacts.
     tender = models.JSONField(default=dict, blank=True)
+    # Jobs from career pages: company, location, workplace, employment type, salary,
+    # department, the apply link and when it was posted.
+    job = models.JSONField(default=dict, blank=True)
     # Deduplication across runs (apps/opportunities/dedupe.py): the same listing,
     # by normalised URL or by title and funder, is never added twice.
     dedupe_key = models.CharField(max_length=64)

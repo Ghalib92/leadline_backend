@@ -31,9 +31,13 @@ def build_source(name: str, spec: SourceSpec):
         from .ppip import PPIPSource
 
         return PPIPSource(name, options=spec.options)
+    if spec.adapter == "careers":
+        from .careers import CareerPagesSource
+
+        return CareerPagesSource(name, options=spec.options)
     raise AIConfigError(f"Source {name!r} uses an unknown adapter {spec.adapter!r}.")
 
 
 KNOWN_ADAPTERS = frozenset(
-    {"tavily", "grants_gov", "world_bank", "eu_funding", "ted_europa", "ppip"}
+    {"tavily", "grants_gov", "world_bank", "eu_funding", "ted_europa", "ppip", "careers"}
 )

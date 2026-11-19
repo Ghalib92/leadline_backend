@@ -36,6 +36,7 @@ from .serializers import (
     InvitationPreviewSerializer,
     InvitationSerializer,
     InvitationTokenSerializer,
+    JobBriefSerializer,
     LinkSerializer,
     MembershipSerializer,
     MembershipUpdateSerializer,
@@ -497,6 +498,23 @@ class ClientBriefView(_BriefView):
 
     def save(self, **data):
         return services.update_client_brief(**data)
+
+
+@extend_schema_view(
+    get=extend_schema(tags=["Organization briefs"]),
+    put=extend_schema(tags=["Organization briefs"]),
+    patch=extend_schema(tags=["Organization briefs"]),
+)
+class JobBriefView(_BriefView):
+    """What a job seeker looks for (Jobs agents)."""
+
+    serializer_class = JobBriefSerializer
+
+    def brief(self, organization):
+        return selectors.job_brief_for(organization)
+
+    def save(self, **data):
+        return services.update_job_brief(**data)
 
 
 @extend_schema_view(

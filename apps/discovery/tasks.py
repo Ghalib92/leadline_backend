@@ -100,6 +100,9 @@ def _request(run) -> DiscoveryRequest:
         org_sources=run.config.get("links") or selectors.org_sources_context(organization),
         folders=run.config.get("folders", []),
         knowledge=KnowledgeScope.of_run(run.config).to_config(),
+        job_search=(
+            selectors.job_search_plan(organization) if run.config.get("goal") == "jobs" else {}
+        ),
         client_search=(
             selectors.client_search_plan(organization, run.config.get("client_focus"))
             if run.config.get("goal") == "clients"

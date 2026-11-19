@@ -41,6 +41,10 @@ roles:
     tier: answer
     reasoning_effort: medium
     description: Scores how worth bidding a tender is for the organization, against its tenders brief.
+  job_judge:
+    tier: answer
+    reasoning_effort: medium
+    description: Scores how well a job fits a candidate's CV and preferences, and lists the gaps.
   client_judge:
     # Listings against a brief is lighter work than judging eligibility, and the
     # research tier has its own provider limits.

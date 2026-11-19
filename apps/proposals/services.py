@@ -131,6 +131,8 @@ def start_draft(*, organization_id, opportunity_id, actor) -> Proposal:
         )
     if opportunity.opportunity_type == OpportunityType.CLIENT:
         raise Conflict("Client leads get a pitch, not a proposal.", code="client_lead")
+    if opportunity.opportunity_type == OpportunityType.JOB:
+        raise Conflict("Jobs get a cover letter, not a proposal.", code="job")
     proposal = Proposal.objects.select_for_update().filter(
         opportunity=opportunity
     ).first() or Proposal(organization=organization, opportunity=opportunity, created_by=actor)
@@ -163,8 +165,8 @@ def start_draft_for_approval(*, organization_id, opportunity_id) -> Proposal | N
         return None
     if opportunity.status not in DRAFTABLE_STATUSES:
         return None
-    if opportunity.opportunity_type == OpportunityType.CLIENT:
-        return None  # client leads get a pitch (apps.outreach), not a proposal
+    if opportunity.opportunity_type in (OpportunityType.CLIENT, OpportunityType.JOB):
+        return None  # leads get a pitch (apps.outreach); jobs a cover letter, not this
     if Proposal.objects.filter(opportunity=opportunity).exists():
         return None
     proposal = Proposal(organization_id=organization_id, opportunity=opportunity)

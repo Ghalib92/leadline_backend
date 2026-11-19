@@ -42,7 +42,10 @@ def run_discovery_graph(request: DiscoveryRequest, emitter, sink: DiscoverySink)
     for name in config.sources_for(request.source_categories or ["web"]):
         spec = config.sources[name]
         try:
-            runtime.sources[name] = build_source(name, spec)
+            source = build_source(name, spec)
+            if hasattr(source, "configure"):  # sources that read the run (career pages)
+                source.configure(request)
+            runtime.sources[name] = source
             runtime.source_specs[name] = spec
         except AIConfigError as exc:
             logger.warning("Discovery source %s is not configured: %s", name, exc)

@@ -10,6 +10,7 @@ from django.utils.text import slugify
 from apps.common.models import UUIDTimestampedModel
 
 from .choices import (
+    AccountType,
     BudgetRange,
     DocumentCategory,
     LinkKind,
@@ -20,7 +21,10 @@ from .choices import (
 
 
 class Organization(UUIDTimestampedModel):
-    # Identity
+    # Identity. A candidate's workspace is named after the person.
+    account_type = models.CharField(
+        max_length=12, choices=AccountType.choices, default=AccountType.ORGANIZATION
+    )
     name = models.CharField(max_length=200)
     slug = models.SlugField(max_length=240, unique=True, editable=False)
     legal_name = models.CharField(max_length=255, blank=True, default="")
@@ -77,6 +81,10 @@ class Organization(UUIDTimestampedModel):
     @property
     def is_archived(self):
         return self.archived_at is not None
+
+    @property
+    def is_candidate(self):
+        return self.account_type == AccountType.CANDIDATE
 
 
 class OrganizationMembership(UUIDTimestampedModel):
@@ -314,6 +322,32 @@ class TenderBrief(UUIDTimestampedModel):
 
     def __str__(self):
         return f"Tenders brief for {self.organization_id}"
+
+
+class JobBrief(UUIDTimestampedModel):
+    """What a candidate looks for: the brief for Jobs agents. Their CV is a document."""
+
+    organization = models.OneToOneField(
+        Organization, on_delete=models.CASCADE, related_name="job_brief"
+    )
+    headline = models.CharField(max_length=200, blank=True, default="")  # "Backend developer"
+    target_roles = models.JSONField(default=list, blank=True)  # job titles, free text
+    seniority = models.JSONField(default=list, blank=True)  # Seniority values
+    employment_types = models.JSONField(default=list, blank=True)  # EmploymentType values
+    workplaces = models.JSONField(default=list, blank=True)  # Workplace values
+    target_countries = models.JSONField(default=list, blank=True)  # ISO alpha-2 codes
+    target_cities = models.JSONField(default=list, blank=True)
+    skills = models.JSONField(default=list, blank=True)
+    years_experience = models.PositiveSmallIntegerField(null=True, blank=True)
+    salary_min = models.PositiveIntegerField(null=True, blank=True)  # a month
+    salary_currency = models.CharField(max_length=3, default="KES")
+    # Companies to follow: their career pages (Greenhouse, Lever, Ashby, Workable URLs).
+    companies = models.JSONField(default=list, blank=True)
+    excluded_keywords = models.JSONField(default=list, blank=True)
+    notes = models.TextField(blank=True, default="")
+
+    def __str__(self):
+        return f"Job preferences for {self.organization_id}"
 
 
 class OrganizationLink(UUIDTimestampedModel):

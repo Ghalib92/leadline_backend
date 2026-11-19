@@ -268,7 +268,7 @@ def start_run(*, organization_id, agent_id, actor, trigger=RunTrigger.MANUAL, ov
 def _check_can_start(organization):
     if not setup_status(organization)["ready_for_matching"]:
         raise Conflict(
-            "Finish the organization setup (profile and preferences) before searching.",
+            "Finish the required setup steps (the checklist on your overview) before searching.",
             code="setup_incomplete",
         )
     expire_stale_runs(organization)

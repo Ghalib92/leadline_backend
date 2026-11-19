@@ -72,6 +72,12 @@ def tender_brief_for(organization):
     return TenderBrief.objects.get_or_create(organization=organization)[0]
 
 
+def job_brief_for(organization):
+    from .models import JobBrief
+
+    return JobBrief.objects.get_or_create(organization=organization)[0]
+
+
 def goals_in_play(organization) -> list[str]:
     """The goals the organization works on, in a stable order. One that never picked
     goals keeps the grant preferences it had before goals existed."""
@@ -107,6 +113,8 @@ def _brief_steps(organization):
 def setup_status(organization):
     """Onboarding checklist. Required steps are the minimum opportunity matching needs:
     the basics, what the organization does, and a brief for each goal it picked."""
+    if organization.is_candidate:
+        return _summary(_candidate_steps(organization))
     has_team = (
         organization.memberships.filter(status="active").count() > 1
         or organization.invitations.filter(status="pending").exists()
@@ -134,6 +142,26 @@ def setup_status(organization):
         ),
         ("team", "Invite your team", False, has_team),
     ]
+    return _summary(steps)
+
+
+def _candidate_steps(organization):
+    """A job seeker's checklist: where they are, what they want, and their CV."""
+    brief = job_brief_for(organization)
+    return [
+        (
+            "basics",
+            "Add your country and a short summary of your experience",
+            True,
+            bool(organization.country and organization.description),
+        ),
+        ("job_brief", "Say which jobs you want", True, bool(brief.target_roles)),
+        ("cv", "Upload your CV", True, organization.documents.exists()),
+        ("skills", "List your main skills", False, bool(brief.skills)),
+    ]
+
+
+def _summary(steps):
     steps = [
         {"key": key, "label": label, "required": required, "done": done}
         for key, label, required, done in steps

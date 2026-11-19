@@ -78,10 +78,12 @@ def add_discovered(*, run, candidate) -> tuple[Opportunity, bool]:
         verification=candidate.verification,
         business=candidate.business,
         tender=candidate.tender,
+        job=candidate.job,
         **keys,
     )
-    if is_client:
-        return opportunity, True  # the opportunity brief is for calls; leads get a pitch
+    if is_client or candidate.opportunity_type == OpportunityType.JOB:
+        # The brief is for calls and bids: leads get a pitch, jobs their own fit and gaps.
+        return opportunity, True
     if not (isinstance(opportunity.requirements, dict) and "brief" in opportunity.requirements):
         from .tasks import analyze_opportunity
 
