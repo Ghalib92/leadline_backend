@@ -26,6 +26,12 @@ urlpatterns = [
         name="contact",
     ),
     path(f"{OPPORTUNITY}/pitch/", views.LeadPitchView.as_view(), name="pitch"),
+    path(f"{OPPORTUNITY}/application/", views.JobApplicationView.as_view(), name="application"),
+    path(
+        f"{OPPORTUNITY}/application/export/",
+        views.JobApplicationExportView.as_view(),
+        name="application-export",
+    ),
     path(f"{OPPORTUNITY}/activity/", views.LeadActivityListView.as_view(), name="activity"),
     path(
         f"{ORG}/lead-activity/<shortuuid:activity_id>/",

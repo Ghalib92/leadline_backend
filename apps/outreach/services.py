@@ -1,10 +1,12 @@
-"""Writes for leads, outreach, client-lead pitches, the call list and deadline reminders.
+"""Writes for leads, outreach, client-lead pitches, job applications, the call list and
+deadline reminders.
 
 Nothing is sent to a funder without a person: members draft and edit emails, and only
 an admin's explicit approval sends one. Contacts marked do-not-contact are never
 emailed. Workers (no caller) claim their job by a status change under a row lock, so
 an email is sent at most once. Client-lead pitches are never sent from here at all:
-a person sends them from their own phone or email, then logs what happened.
+a person sends them from their own phone or email, then logs what happened. Likewise
+a job seeker applies themselves, with the letter and CV written here.
 """
 
 from datetime import timedelta
@@ -24,16 +26,20 @@ from apps.organizations.permissions import require_membership
 from apps.organizations.services import lock_organization, record_event
 
 from .choices import (
+    CLIENT_OUTCOMES,
     CLOSED_OUTCOMES,
     EDITABLE_EMAIL_STATUSES,
+    JOB_OUTCOMES,
     ContactSource,
     EmailStatus,
+    LeadOutcome,
     PitchStatus,
     SearchStatus,
 )
 from .models import (
     Contact,
     ContactSearch,
+    JobApplication,
     LeadActivity,
     LeadPitch,
     OutreachEmail,
@@ -442,11 +448,19 @@ PITCH_FIELDS = frozenset({"whatsapp", "email_subject", "email_body", "call_point
 
 
 def _client_lead(organization, opportunity_id):
+    return _worked(organization, opportunity_id, OpportunityType.CLIENT)
+
+
+def _worked(organization, opportunity_id, *kinds):
+    """An approved client lead or job (of the kinds given), still worked or closed."""
     opportunity = get_object_or_404(organization.opportunities, pk=opportunity_id)
-    if opportunity.opportunity_type != OpportunityType.CLIENT:
+    if opportunity.opportunity_type not in kinds:
+        if kinds == (OpportunityType.JOB,):
+            raise Conflict("Applications are for jobs.", code="not_a_job")
         raise Conflict("Pitches and the call list are for client leads.", code="not_a_lead")
     if opportunity.status not in WORKED_LEAD_STATUSES:
-        raise Conflict("Approve the lead first.", code="not_approved")
+        what = "job" if opportunity.opportunity_type == OpportunityType.JOB else "lead"
+        raise Conflict(f"Approve the {what} first.", code="not_approved")
     return opportunity
 
 
@@ -554,17 +568,150 @@ def fail_pitch(pitch_id, started_at, error) -> bool:
     return bool(updated)
 
 
+# ---------------------------------------------------------------------------
+# Job applications: a cover letter and a tailored CV for an approved job
+# ---------------------------------------------------------------------------
+
+APPLICATION_FIELDS = frozenset({"cover_letter", "cv", "gaps"})
+
+
+def _queue_application(application, *, actor, instructions=""):
+    from .tasks import write_job_application
+
+    application.status, application.error = PitchStatus.WRITING, ""
+    application.instructions = instructions.strip()
+    application.requested_by = actor
+    application.writing_started_at = timezone.now()
+    application.save()
+    enqueue(write_job_application, application.pk)
+
+
+@transaction.atomic
+def write_application(*, organization_id, opportunity_id, actor, instructions="") -> JobApplication:
+    """(Re)write the letter and CV for an approved job; the person's edits are replaced,
+    so the frontend asks first."""
+    organization = lock_organization(organization_id, actor, admin=False)
+    opportunity = _worked(organization, opportunity_id, OpportunityType.JOB)
+    application = JobApplication.objects.select_for_update().filter(opportunity=opportunity).first()
+    if (
+        application
+        and application.status == PitchStatus.WRITING
+        and not _stale(application.writing_started_at)
+    ):
+        raise Conflict("The application is being written.", code="application_busy")
+    application = application or JobApplication(organization=organization, opportunity=opportunity)
+    _queue_application(application, actor=actor, instructions=instructions)
+    record_event(
+        organization,
+        actor,
+        "application.requested",
+        target_id=opportunity.pk,
+        metadata={"title": opportunity.title[:120]},
+    )
+    return application
+
+
+@transaction.atomic
+def write_application_for_approval(*, organization_id, opportunity_id) -> JobApplication | None:
+    """On approval of a job: write its letter and CV, unless it has them (approving again
+    after a rejection keeps the earlier ones)."""
+    from apps.opportunities.models import Opportunity
+
+    opportunity = (
+        Opportunity.objects.select_for_update()
+        .filter(pk=opportunity_id, organization_id=organization_id)
+        .select_related("organization")
+        .first()
+    )
+    if (
+        opportunity is None
+        or opportunity.organization.is_archived
+        or opportunity.opportunity_type != OpportunityType.JOB
+        or opportunity.status not in ACTIVE_STATUSES
+        or JobApplication.objects.filter(opportunity=opportunity).exists()
+    ):
+        return None
+    application = JobApplication(organization_id=organization_id, opportunity=opportunity)
+    _queue_application(application, actor=None)
+    return application
+
+
+@transaction.atomic
+def edit_application(*, organization_id, opportunity_id, actor, **data) -> JobApplication:
+    organization = lock_organization(organization_id, actor, admin=False)
+    opportunity = _worked(organization, opportunity_id, OpportunityType.JOB)
+    application = get_object_or_404(
+        JobApplication.objects.select_for_update(), opportunity=opportunity
+    )
+    if application.status == PitchStatus.WRITING and not _stale(application.writing_started_at):
+        raise Conflict("Wait until the application is written.", code="application_busy")
+    changed = [f for f in APPLICATION_FIELDS & data.keys() if getattr(application, f) != data[f]]
+    for field in changed:
+        setattr(application, field, data[field])
+    # Lines to check stay flagged only while the CV still has them.
+    application.unverified = [line for line in application.unverified if line in application.cv]
+    if changed:
+        application.status, application.error = PitchStatus.READY, ""
+        application.edited_by, application.edited_at = actor, timezone.now()
+        application.save()
+    return application
+
+
+@transaction.atomic
+def save_written_application(
+    application_id, started_at, draft, *, unverified=(), cv_title, prompt_id, model
+) -> bool:
+    """The writer's result, kept only if this is still the job it started (a newer
+    request or a person's edit wins)."""
+    application = (
+        JobApplication.objects.select_for_update()
+        .filter(pk=application_id, status=PitchStatus.WRITING, writing_started_at=started_at)
+        .first()
+    )
+    if application is None:
+        return False
+    application.cover_letter = draft.cover_letter.strip()
+    application.cv = draft.cv.strip()
+    application.gaps = [gap.strip() for gap in draft.gaps if gap.strip()][:4]
+    application.unverified = list(unverified)
+    application.cv_document_title = cv_title[:200]
+    application.prompt_id, application.model = prompt_id, model
+    application.status = PitchStatus.READY
+    application.edited_by, application.edited_at = None, None
+    application.save()
+    return True
+
+
+@transaction.atomic
+def fail_application(application_id, started_at, error) -> bool:
+    updated = JobApplication.objects.filter(
+        pk=application_id, status=PitchStatus.WRITING, writing_started_at=started_at
+    ).update(status=PitchStatus.FAILED, error=error[:500], updated_at=timezone.now())
+    return bool(updated)
+
+
 @transaction.atomic
 def log_activity(
     *, organization_id, opportunity_id, actor, channel, outcome, note="", follow_up_on=None
 ) -> LeadActivity:
-    """Record a call, message or visit to a client lead and what came of it."""
+    """Record a call, message or visit to a client lead and what came of it; for a job,
+    a step of the application (applied, interview, offer…). Logging "applied" marks the
+    job submitted."""
     organization = lock_organization(organization_id, actor, admin=False)
-    opportunity = _client_lead(organization, opportunity_id)
+    opportunity = _worked(organization, opportunity_id, OpportunityType.CLIENT, OpportunityType.JOB)
+    is_job = opportunity.opportunity_type == OpportunityType.JOB
+    if outcome not in (JOB_OUTCOMES if is_job else CLIENT_OUTCOMES):
+        raise ValidationError(
+            {"outcome": "Pick an application step." if is_job else "Pick what happened."}
+        )
     if follow_up_on and outcome in CLOSED_OUTCOMES:
-        raise ValidationError({"follow_up_on": "A closed lead needs no follow-up."})
+        what = "application" if is_job else "lead"
+        raise ValidationError({"follow_up_on": f"A closed {what} needs no follow-up."})
     if follow_up_on and follow_up_on < timezone.localdate():
         raise ValidationError({"follow_up_on": "Pick today or a later day."})
+    if outcome == LeadOutcome.APPLIED and opportunity.status == OpportunityStatus.PURSUING:
+        opportunity.status = OpportunityStatus.SUBMITTED
+        opportunity.save(update_fields=["status", "updated_at"])
     activity = LeadActivity.objects.create(
         organization=organization,
         opportunity=opportunity,

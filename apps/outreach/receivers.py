@@ -7,7 +7,12 @@ from . import services
 
 @receiver(opportunity_approved, dispatch_uid="outreach.pitch_on_approval")
 def pitch_on_approval(sender, *, organization_id, opportunity_id, **kwargs):
-    """An approved client lead gets its pitch written (the Proposal Writer skips them)."""
+    """An approved client lead gets its pitch written, and an approved job its cover
+    letter and tailored CV (the Proposal Writer skips both). Each service ignores the
+    other kinds."""
     services.write_pitch_for_approval(
+        organization_id=organization_id, opportunity_id=opportunity_id
+    )
+    services.write_application_for_approval(
         organization_id=organization_id, opportunity_id=opportunity_id
     )

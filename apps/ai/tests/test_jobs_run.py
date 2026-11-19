@@ -71,12 +71,14 @@ def test_a_jobs_run_reads_career_pages_and_scores_fit_against_the_cv(monkeypatch
     assert job.requirements["concerns"] == ["Asks for Kafka, which the CV doesn't show"]
     assert job.job["apply_url"] == "https://jobs.lever.co/acme/a1/apply"
     assert job.job["salary"] == "3,000 – 4,500 USD"
+    assert "Write Python services." in job.job["posting"]  # for the application writer
 
     prompt = next(p for p in models["job_judge"].calls if "Python Developer" in p)
     assert '"workplace": "remote"' in prompt
     assert "apply_url" not in prompt  # links are for people
     assert "Write Python services." in prompt  # the posting itself
     assert 'address them as "you"' in prompt  # never a guessed he or she
+    assert '"posting"' not in prompt  # the description is sent once, as the posting
     messages = [event.message for event in emitter.events]
     assert any(m.startswith("Reading all") and "official portals" in m for m in messages)
 
@@ -159,6 +161,7 @@ def test_job_board_list_pages_become_one_lead_per_advert(monkeypatch, settings, 
     assert not any("jobs in Kenya" in title for title in by_title)
     saved = by_title["Backend Developer"]
     assert str(saved.source_url).endswith("/listings/backend-developer-pesalink-abc")
+    assert "Python, Django and PostgreSQL" in saved.job["posting"]  # the advert's text
     assert "researcher" not in models or not models["researcher"].calls  # not asked
     messages = [event.message for event in emitter.events]
     assert "1 advert(s) found" in messages

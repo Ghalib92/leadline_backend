@@ -383,6 +383,18 @@ class EmailerSettings(BaseModel):
     budget: RunBudget
 
 
+class CvReaderSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    budget: RunBudget
+    max_cv_chars: int = Field(ge=1000)
+
+
+class ApplicationWriterSettings(CvReaderSettings):
+    max_posting_chars: int = Field(ge=500)
+    letter_reads: int = Field(ge=0, le=3)
+
+
 class OutreachSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -390,6 +402,8 @@ class OutreachSettings(BaseModel):
     lead_scout: LeadScoutSettings
     emailer: EmailerSettings
     pitch_writer: EmailerSettings  # a budget only, like the emailer
+    application_writer: ApplicationWriterSettings
+    cv_reader: CvReaderSettings
 
 
 @cache

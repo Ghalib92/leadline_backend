@@ -345,6 +345,9 @@ class JobBrief(UUIDTimestampedModel):
     companies = models.JSONField(default=list, blank=True)
     excluded_keywords = models.JSONField(default=list, blank=True)
     notes = models.TextField(blank=True, default="")
+    # What reading the CV found: the fields it filled in, and job titles and skills it
+    # suggests adding (kept until added or dismissed). {} before a CV is read.
+    cv_suggestions = models.JSONField(default=dict, blank=True)
 
     def __str__(self):
         return f"Job preferences for {self.organization_id}"

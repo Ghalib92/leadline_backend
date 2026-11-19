@@ -1,4 +1,5 @@
-# Leads and outreach: limits for the lead scout, the email agent and the pitch writer.
+# Leads and outreach: limits for the lead scout, the email agent, the pitch writer and,
+# for job seekers, the application writer and the CV reader.
 version: 1
 
 lead_scout:
@@ -28,3 +29,29 @@ pitch_writer:
     max_pages: 0
     max_tokens: 12000
     max_wall_seconds: 120
+
+# A cover letter and a tailored CV for an approved job: the writer, and a checker that
+# reads the letter against the CV (both again, once, when the draft claims what the CV
+# doesn't), and one page read when the job was saved without its posting's text.
+application_writer:
+  budget:
+    max_searches: 0
+    max_pages: 1
+    max_tokens: 30000
+    max_wall_seconds: 240
+  # Groq's free tier allows about 8,000 tokens a request, answer included: about 1,800
+  # for the CV, 1,000 for the posting, the rest for the prompt and the answer.
+  max_cv_chars: 7000
+  max_posting_chars: 4000
+  # Reads of the letter by the checker; their findings are combined. One read misses
+  # a stretch about one time in three.
+  letter_reads: 2
+
+# Job titles and skills from an uploaded CV, to fill in the job preferences.
+cv_reader:
+  budget:
+    max_searches: 0
+    max_pages: 0
+    max_tokens: 8000
+    max_wall_seconds: 90
+  max_cv_chars: 8000

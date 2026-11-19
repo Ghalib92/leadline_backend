@@ -116,6 +116,25 @@ roles:
     reasoning_effort: low
     max_tokens: 3000
     description: Writes a WhatsApp message, an email and call points for an approved client lead.
+  application_writer:
+    tier: answer
+    # Medium was slower and no more faithful in trials; the checks do the policing.
+    reasoning_effort: low
+    max_tokens: 4000
+    timeout_seconds: 120
+    description: Writes a cover letter, a tailored CV and notes on the gaps for an approved job, from the candidate's CV.
+  application_checker:
+    # A different, smaller model than the writer: its own quota, and a second reader.
+    tier: research
+    # Not high: on Groq, gpt-oss at high effort often returns an empty JSON answer.
+    reasoning_effort: medium
+    max_tokens: 3000
+    description: Lists the cover letter's sentences that claim what the candidate's CV doesn't support.
+  cv_reader:
+    tier: research
+    reasoning_effort: low
+    max_tokens: 1500
+    description: Reads a job seeker's CV for their headline, job titles, skills, years and level.
   opportunity_analyst:
     tier: answer
     reasoning_effort: medium

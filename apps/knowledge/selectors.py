@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from django.conf import settings
 from pgvector.django import CosineDistance
 
-from apps.organizations.choices import ProcessingStatus
+from apps.organizations.choices import DocumentCategory, ProcessingStatus
 from apps.organizations.models import Organization
 from apps.organizations.selectors import preferences_for
 
@@ -129,6 +129,44 @@ def _document_excerpts(organization):
         )
         remaining -= len(excerpt)
     return excerpts
+
+
+def cv_document(organization, document_id=None):
+    """A job seeker's CV: the given document, else their newest processed one filed as a
+    CV, else their newest processed document. None when there is none."""
+    documents = organization.documents.filter(processing_status=ProcessingStatus.PROCESSED)
+    if document_id:
+        return documents.filter(pk=document_id).first()
+    newest = ("-created_at", "-id")
+    return (
+        documents.filter(category=DocumentCategory.CV).order_by(*newest).first()
+        or documents.order_by(*newest).first()
+    )
+
+
+def document_text(document, max_chars: int) -> str:
+    """A document's text rebuilt from its passages, without the overlap each passage
+    repeats from the one before it."""
+    parts, size, previous = [], 0, ""
+    for chunk in document.chunks.order_by("position").values_list("text", flat=True):
+        text = _without_overlap(previous, chunk)
+        previous = chunk
+        parts.append(text)
+        size += len(text) + 1
+        if size >= max_chars:
+            break
+    return " ".join(part for part in parts if part)[:max_chars].strip()
+
+
+MIN_OVERLAP = 20  # shorter matches are chance (passages from different sections)
+
+
+def _without_overlap(previous: str, text: str) -> str:
+    longest = min(len(previous), len(text), settings.KNOWLEDGE_CHUNK_OVERLAP)
+    for length in range(longest, MIN_OVERLAP - 1, -1):
+        if text.startswith(previous[-length:]):
+            return text[length:].strip()
+    return text
 
 
 @dataclass(frozen=True)

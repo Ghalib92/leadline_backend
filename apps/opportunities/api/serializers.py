@@ -68,6 +68,7 @@ class OpportunitySerializer(serializers.ModelSerializer):
     brief = serializers.SerializerMethodField()
     brief_status = serializers.SerializerMethodField()
     brief_sources = serializers.SerializerMethodField()
+    job = serializers.SerializerMethodField()
 
     class Meta:
         model = Opportunity
@@ -103,6 +104,11 @@ class OpportunitySerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = fields
+
+    def get_job(self, opportunity) -> dict:
+        """A job's facts; its posting's text stays server-side (the application writer's
+        input, and the posting is a link away)."""
+        return {k: v for k, v in (opportunity.job or {}).items() if k != "posting"}
 
     def get_agent_name(self, opportunity) -> str | None:
         return opportunity.agent.name if opportunity.agent else None

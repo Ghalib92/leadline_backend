@@ -5,21 +5,19 @@ lists, "#" sub-headings, **bold** and *italic*. Anything else is kept as plain t
 """
 
 import io
-import re
 
 from docx import Document
 from docx.shared import Pt
 
+from apps.common.docx_markdown import add_markdown
 from apps.organizations.choices import OpportunityType
 
-_INLINE = re.compile(r"(\*\*[^*]+\*\*|\*[^*]+\*)")
 STATUS_LABELS = {
     "ready": "Ready",
     "check": "Check",
     "missing": "Missing",
     "prepare": "Prepare",
 }
-_NUMBERED = re.compile(r"^\d+[.)]\s+")
 
 
 def proposal_docx(proposal, version) -> bytes:
@@ -44,7 +42,7 @@ def proposal_docx(proposal, version) -> bytes:
     sources = []
     for section in version.sections:
         document.add_heading(section["title"], level=1)
-        _add_markdown(document, section.get("content") or "[Not written yet]")
+        add_markdown(document, section.get("content") or "[Not written yet]")
         for item in section.get("evidence") or []:
             sources.append(
                 f"{section['title']} [{item['n']}]: {item['document_title']}"
@@ -79,40 +77,3 @@ def _add_checklist(document, checklist):
         cells[1].text = STATUS_LABELS.get(item.get("status"), "Check") + note
         cells[2].text = "; ".join(doc["title"] for doc in item.get("documents") or [])
         cells[3].text = "Yes" if item.get("done") else ""
-
-
-def _add_markdown(document, text):
-    pending: list[str] = []  # lines of the current paragraph
-
-    def flush():
-        if pending:
-            _add_runs(document.add_paragraph(), " ".join(pending))
-            pending.clear()
-
-    for line in text.strip().splitlines():
-        stripped = line.strip()
-        if not stripped:
-            flush()
-        elif stripped.startswith("#"):
-            flush()
-            level = min(4, len(stripped) - len(stripped.lstrip("#")) + 1)
-            document.add_heading(stripped.lstrip("#").strip(), level=level)
-        elif stripped[:2] in ("- ", "* ", "• "):
-            flush()
-            _add_runs(document.add_paragraph(style="List Bullet"), stripped[2:])
-        elif _NUMBERED.match(stripped):
-            flush()
-            _add_runs(document.add_paragraph(style="List Number"), _NUMBERED.sub("", stripped))
-        else:
-            pending.append(stripped)
-    flush()
-
-
-def _add_runs(paragraph, text):
-    for part in _INLINE.split(text):
-        if part.startswith("**") and part.endswith("**") and len(part) > 4:
-            paragraph.add_run(part[2:-2]).bold = True
-        elif part.startswith("*") and part.endswith("*") and len(part) > 2:
-            paragraph.add_run(part[1:-1]).italic = True
-        elif part:
-            paragraph.add_run(part)

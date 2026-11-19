@@ -1,5 +1,5 @@
 """Background jobs: finding contacts, drafting and sending outreach, writing client-lead
-pitches, deadline reminders."""
+pitches and job applications, deadline reminders."""
 
 import logging
 from datetime import timedelta
@@ -16,7 +16,7 @@ from apps.common.jobs import job
 
 from . import selectors, services
 from .choices import EmailStatus, PitchStatus
-from .models import LeadPitch, OutreachEmail, ReminderLog
+from .models import JobApplication, LeadPitch, OutreachEmail, ReminderLog
 
 logger = logging.getLogger(__name__)
 NOT_CONFIGURED = "The AI is not configured on the server yet."
@@ -158,6 +158,91 @@ def write_lead_pitch(pitch_id):
         prompt_id=runtime.prompt_versions.get("pitch_writer", ""),
         model=runtime.models_used.get("pitch_writer") or resolve_role("pitch_writer").model,
     )
+
+
+@job("outreach.write_job_application")
+def write_job_application(application_id):
+    """Write the cover letter and tailored CV for an approved job. A retry finds the same
+    job (same start time) and writes it again; a newer request or an edit in between
+    makes it a no-op."""
+    from apps.ai.agents.application_writer import write_application
+    from apps.ai.graphs.runtime import TaskRuntime
+
+    application = (
+        JobApplication.objects.select_related("opportunity", "organization")
+        .filter(pk=application_id, status=PitchStatus.WRITING)
+        .first()
+    )
+    if application is None:
+        return
+    started_at = application.writing_started_at
+    try:
+        config = load_outreach_file().application_writer
+        inputs = selectors.application_inputs(
+            application,
+            max_cv_chars=config.max_cv_chars,
+            max_posting_chars=config.max_posting_chars,
+        )
+        if not inputs["candidate"].get("cv"):
+            services.fail_application(
+                application_id,
+                started_at,
+                "Upload your CV first (Settings, Documents), then write the application again.",
+            )
+            return
+        budget = Budget(config.budget.model_dump())
+        if inputs["page_url"]:
+            inputs["job"]["posting"] = _posting(inputs["page_url"], budget)[
+                : config.max_posting_chars
+            ]
+        runtime = TaskRuntime(budget=budget, organization_name=application.organization.name)
+        written = write_application(
+            runtime,
+            candidate=inputs["candidate"],
+            job={k: v for k, v in inputs["job"].items() if v},
+            instructions=application.instructions,
+            letter_reads=config.letter_reads,
+        )
+    except AIConfigError as exc:
+        logger.error("Application %s cannot be written: %s", application_id, exc)
+        services.fail_application(application_id, started_at, NOT_CONFIGURED)
+        return
+    except (StructuredOutputError, BudgetExhausted):
+        services.fail_application(
+            application_id,
+            started_at,
+            "The AI could not write this application. Try again or write it.",
+        )
+        return
+    except Exception:
+        logger.exception("Application %s failed", application_id)
+        services.fail_application(
+            application_id, started_at, "Writing the application failed unexpectedly."
+        )
+        return
+    services.save_written_application(
+        application_id,
+        started_at,
+        written.draft,
+        unverified=written.unverified,
+        cv_title=inputs["cv_title"],
+        prompt_id=runtime.prompt_versions.get("application_writer", ""),
+        model=runtime.models_used.get("application_writer")
+        or resolve_role("application_writer").model,
+    )
+
+
+def _posting(url, budget) -> str:
+    """The posting's text from its page, for jobs saved without it; "" when the page
+    can't be read (the summary and requirements are still there)."""
+    from apps.ai.tools.fetch.http import HttpFetcher
+
+    try:
+        budget.use_page()
+        return HttpFetcher().fetch(url).text
+    except Exception as exc:  # a failed read never fails the application
+        logger.info("Posting %s not read: %r", url, exc)
+        return ""
 
 
 def _look_up_unchecked(pitch) -> None:

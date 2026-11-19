@@ -14,8 +14,10 @@ from apps.organizations.api.views import OrganizationAPIView
 from .. import selectors, services
 from ..calendar import deadlines_ics
 from ..choices import CallListView, EmailPurpose, EmailStatus
+from ..export import application_docx
 from ..models import Contact, LeadActivity, OutreachEmail
 from .serializers import (
+    ApplicationEditSerializer,
     CallListItemSerializer,
     ContactSearchSerializer,
     ContactSerializer,
@@ -25,6 +27,7 @@ from .serializers import (
     EmailDraftSerializer,
     EmailEditSerializer,
     EmailRedraftSerializer,
+    JobApplicationSerializer,
     LeadActivitySerializer,
     LeadActivityWriteSerializer,
     LeadPitchSerializer,
@@ -37,6 +40,7 @@ from .serializers import (
 DEFAULT_DEADLINE_DAYS = 90
 MAX_DEADLINE_DAYS = 366
 ICS = "text/calendar; charset=utf-8"
+DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
 class OutreachAPIView(OrganizationAPIView):
@@ -476,9 +480,69 @@ class LeadPitchView(OutreachAPIView):
         return self.pitch_response()
 
 
+@extend_schema(tags=["Applications"])
+class JobApplicationView(OutreachAPIView):
+    """The cover letter and tailored CV for an approved job, written from the candidate's
+    CV when the job is approved; POST rewrites them (status `writing`, then `ready`; poll
+    it), PATCH edits them. Leadline never applies: the candidate does."""
+
+    serializer_class = JobApplicationSerializer
+    starts_ai_job = True
+
+    def application_response(self, response_status=200):
+        application = selectors.application_for(self.get_opportunity())
+        if application is None:
+            raise NotFound("This job has no application yet.")
+        return Response(JobApplicationSerializer(application).data, status=response_status)
+
+    def get(self, request, organization_id, opportunity_id):
+        return self.application_response()
+
+    @extend_schema(request=PitchRequestSerializer, responses={202: JobApplicationSerializer})
+    def post(self, request, organization_id, opportunity_id):
+        self.get_opportunity()
+        services.write_application(
+            organization_id=organization_id,
+            opportunity_id=opportunity_id,
+            actor=request.user,
+            **self.validated(PitchRequestSerializer),
+        )
+        return self.application_response(status.HTTP_202_ACCEPTED)
+
+    @extend_schema(request=ApplicationEditSerializer)
+    def patch(self, request, organization_id, opportunity_id):
+        self.get_opportunity()
+        services.edit_application(
+            organization_id=organization_id,
+            opportunity_id=opportunity_id,
+            actor=request.user,
+            **self.validated(ApplicationEditSerializer),
+        )
+        return self.application_response()
+
+
+@extend_schema(tags=["Applications"], responses={(200, DOCX): OpenApiTypes.BINARY})
+class JobApplicationExportView(OutreachAPIView):
+    """The tailored CV and the cover letter as one Word file."""
+
+    def get(self, request, organization_id, opportunity_id):
+        opportunity = self.get_opportunity()
+        application = selectors.application_for(opportunity)
+        if application is None or not (application.cv or application.cover_letter):
+            raise NotFound("This job has no application to download yet.")
+        title = opportunity.title
+        if opportunity.funder.lower() not in title.lower():  # "Backend Developer at Acme"
+            title = f"{opportunity.funder} {title}"
+        name = slugify(title)[:60].strip("-") or "application"
+        response = HttpResponse(application_docx(application), content_type=DOCX)
+        response["Content-Disposition"] = f'attachment; filename="{name}.docx"'
+        return response
+
+
 @extend_schema(tags=["Call list"])
 class LeadActivityListView(OutreachAPIView, generics.ListAPIView):
-    """Calls, messages and visits to a client lead, newest first. POST logs one."""
+    """Calls, messages and visits to a client lead, or the steps of a job application,
+    newest first. POST logs one."""
 
     serializer_class = LeadActivitySerializer
     pagination_class = None
@@ -526,7 +590,8 @@ class LeadActivityDetailView(OutreachAPIView):
 )
 class CallListAPIView(OutreachAPIView, generics.ListAPIView):
     """Approved client leads to reach, in working order: follow-ups that are due, then
-    leads never contacted (best first), then the rest."""
+    leads never contacted (best first), then the rest. For a job seeker, their approved
+    jobs the same way (to apply, follow up, closed): the application tracker."""
 
     serializer_class = CallListItemSerializer
 

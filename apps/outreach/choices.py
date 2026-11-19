@@ -45,18 +45,21 @@ EDITABLE_EMAIL_STATUSES = (EmailStatus.DRAFT, EmailStatus.FAILED)
 
 
 class PitchStatus(models.TextChoices):
+    """A pitch's, or a job application's, writing state."""
+
     WRITING = "writing", "AI is writing"
     READY = "ready", "Ready"
     FAILED = "failed", "Failed"
 
 
 class LeadChannel(models.TextChoices):
-    """How a person reached (or tried to reach) a business."""
+    """How a person reached (or tried to reach) a business, or applied for a job."""
 
     CALL = "call", "Phone call"
     WHATSAPP = "whatsapp", "WhatsApp"
     EMAIL = "email", "Email"
     VISIT = "visit", "Visit"
+    ONLINE = "online", "Online form or job site"
     OTHER = "other", "Other"
 
 
@@ -71,14 +74,34 @@ class LeadOutcome(models.TextChoices):
     MEETING = "meeting", "Meeting booked"
     NOT_INTERESTED = "not_interested", "Not interested"
     WRONG_CONTACT = "wrong_contact", "Wrong number or contact"
+    # A job seeker's applications (the same log, the tracker's stages).
+    APPLIED = "applied", "Applied"
+    INTERVIEW = "interview", "Interview booked"
+    OFFER = "offer", "Offer received"
+    REJECTED = "rejected", "Not selected"
+    WITHDREW = "withdrew", "Withdrew"
 
 
-# Outcomes after which nobody needs to reach the business again.
-CLOSED_OUTCOMES = (LeadOutcome.NOT_INTERESTED, LeadOutcome.WRONG_CONTACT)
+JOB_OUTCOMES = (
+    LeadOutcome.APPLIED,
+    LeadOutcome.INTERVIEW,
+    LeadOutcome.OFFER,
+    LeadOutcome.REJECTED,
+    LeadOutcome.WITHDREW,
+)
+CLIENT_OUTCOMES = tuple(outcome for outcome in LeadOutcome if outcome not in JOB_OUTCOMES)
+
+# Outcomes after which nobody needs to reach the business (or employer) again.
+CLOSED_OUTCOMES = (
+    LeadOutcome.NOT_INTERESTED,
+    LeadOutcome.WRONG_CONTACT,
+    LeadOutcome.REJECTED,
+    LeadOutcome.WITHDREW,
+)
 
 
 class CallListView(models.TextChoices):
-    TO_CONTACT = "to_contact", "To contact"  # approved, never reached out to
+    TO_CONTACT = "to_contact", "To contact"  # approved, never reached out to (or applied)
     FOLLOW_UP = "follow_up", "Follow up"  # reached out, not closed
     CLOSED = "closed", "Closed"  # not interested or wrong contact
     ALL = "all", "All"

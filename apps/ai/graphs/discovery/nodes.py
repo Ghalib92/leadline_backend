@@ -33,6 +33,8 @@ from apps.organizations.choices import TenderEligibility
 
 from .state import DiscoveryState, Lead
 
+MAX_POSTING_CHARS = 6000  # a job's posting kept with it (the application writer's input)
+
 logger = logging.getLogger(__name__)
 DONE = "done"  # `stop` value of a run that finished normally
 STRUCTURED_SOURCES = frozenset(
@@ -423,6 +425,7 @@ def read(runtime, state: DiscoveryState) -> DiscoveryState:
         text = page.text if page else lead.hit.content
         if len(text or "") < 200:  # a snippet is not enough to verify anything
             text = runtime.fetcher.fetch(lead.hit.url).text
+        lead.extra["page_text"] = text  # a job keeps its posting, for the application
         return verify_listing(runtime, url=lead.hit.url, source=_site(lead), page=text)
 
     verified = []
@@ -646,7 +649,9 @@ def _facts(lead) -> dict:
     job = lead.hit.extra.get("job") or {}
     if job:
         # The posting's facts; links are for people.
-        facts["job"] = {k: v for k, v in job.items() if k not in ("url", "apply_url", "system")}
+        facts["job"] = {
+            k: v for k, v in job.items() if k not in ("url", "apply_url", "system", "posting")
+        }
         facts["description"] = lead.hit.content[:4000]
     if deadline:
         facts["days_to_close"] = (deadline - timezone.localdate()).days
@@ -711,8 +716,17 @@ def _candidate(lead, verdict) -> Candidate:
             "checked_on": date.today().isoformat(),
         },
         tender=lead.hit.extra.get("tender") or {},
-        job=lead.hit.extra.get("job") or {},
+        job=_job(lead) if verified.opportunity_type == "job" else {},
     )
+
+
+def _job(lead) -> dict:
+    """A job's facts, with its posting's text: the application writer writes from it."""
+    posting = lead.extra.get("page_text") or lead.hit.content or ""
+    job = dict(lead.hit.extra.get("job") or {})
+    if posting.strip():
+        job["posting"] = posting.strip()[:MAX_POSTING_CHARS]
+    return job
 
 
 def _site(lead):

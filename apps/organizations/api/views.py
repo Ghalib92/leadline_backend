@@ -47,6 +47,7 @@ from .serializers import (
     OrganizationWriteSerializer,
     OrgSourceSerializer,
     OrgSourceWriteSerializer,
+    ReadCvSerializer,
     SetupStatusSerializer,
     TenderBriefSerializer,
 )
@@ -506,7 +507,8 @@ class ClientBriefView(_BriefView):
     patch=extend_schema(tags=["Organization briefs"]),
 )
 class JobBriefView(_BriefView):
-    """What a job seeker looks for (Jobs agents)."""
+    """What a job seeker looks for (Jobs agents). `cv_suggestions` is what reading their
+    CV found: the fields it filled in and job titles and skills it suggests adding."""
 
     serializer_class = JobBriefSerializer
 
@@ -515,6 +517,40 @@ class JobBriefView(_BriefView):
 
     def save(self, **data):
         return services.update_job_brief(**data)
+
+
+@extend_schema(
+    tags=["Organization briefs"], request=ReadCvSerializer, responses={202: JobBriefSerializer}
+)
+class JobBriefReadCvView(OrganizationAPIView):
+    """Read the CV into the job preferences again (in the background; poll the brief).
+    Without `document_id`, the newest document filed as a CV, else the newest one."""
+
+    serializer_class = JobBriefSerializer
+
+    def post(self, request, organization_id):
+        self.get_organization()
+        serializer = ReadCvSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        services.request_cv_read(
+            organization_id=organization_id,
+            actor=request.user,
+            document_id=serializer.validated_data.get("document_id") or None,
+        )
+        brief = selectors.job_brief_for(self.get_readable_organization())
+        return Response(JobBriefSerializer(brief).data, status=status.HTTP_202_ACCEPTED)
+
+
+@extend_schema(tags=["Organization briefs"], request=None, responses={200: JobBriefSerializer})
+class JobBriefDismissSuggestionsView(OrganizationAPIView):
+    """Drop the remaining job titles and skills suggested from the CV."""
+
+    serializer_class = JobBriefSerializer
+
+    def post(self, request, organization_id):
+        self.get_organization()
+        brief = services.dismiss_cv_suggestions(organization_id=organization_id, actor=request.user)
+        return Response(JobBriefSerializer(brief).data)
 
 
 @extend_schema_view(

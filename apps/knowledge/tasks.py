@@ -1,4 +1,5 @@
-"""Background jobs (apps.common.jobs): document processing and dossier generation."""
+"""Background jobs (apps.common.jobs): document processing, dossier generation, and
+reading a job seeker's CV into their job preferences."""
 
 import io
 import logging
@@ -8,6 +9,7 @@ from django.conf import settings
 
 from apps.ai.exceptions import AIConfigError, PromptError, StructuredOutputError
 from apps.common.jobs import job
+from apps.organizations.choices import ProcessingStatus
 from apps.organizations.models import OrganizationDocument
 
 from . import selectors, services
@@ -103,3 +105,47 @@ def refresh_dossier(organization_id, force=False):
         latest = selectors.dossier_inputs(organization_id)
         if latest is not None and selectors.inputs_hash(latest, signature) != source_hash:
             services.schedule_dossier_refresh(organization_id)
+
+
+@job("knowledge.read_cv")
+def read_cv(document_id):
+    """Read a job seeker's processed CV for their headline, job titles, skills, years and
+    level, and fill in their job preferences (empty fields only; the rest become
+    suggestions). Safe to repeat: what is already listed is never suggested again."""
+    from apps.ai.agents.cv_reader import read_cv as read
+    from apps.ai.config.loader import load_outreach_file, resolve_role
+    from apps.ai.graphs.budget import Budget, BudgetExhausted
+    from apps.ai.graphs.runtime import TaskRuntime
+    from apps.organizations.services import save_cv_facts
+
+    document = (
+        OrganizationDocument.objects.select_related("organization")
+        .filter(pk=document_id, processing_status=ProcessingStatus.PROCESSED)
+        .first()
+    )
+    if document is None or not document.organization.is_candidate:
+        return
+    try:
+        config = load_outreach_file().cv_reader
+        text = selectors.document_text(document, config.max_cv_chars)
+        if not text:
+            return
+        runtime = TaskRuntime(budget=Budget(config.budget.model_dump()))
+        facts = read(runtime, cv=text)
+    except (AIConfigError, PromptError):
+        logger.exception("The CV reader is misconfigured")
+        return
+    except (StructuredOutputError, BudgetExhausted):
+        logger.warning("CV %s could not be read", document_id, exc_info=True)
+        return
+    except Exception:
+        logger.exception("Reading CV %s failed", document_id)
+        return
+    save_cv_facts(
+        document.organization_id,
+        document_id=document.pk,
+        document_title=document.title,
+        facts=facts.model_dump(),
+        prompt_id=runtime.prompt_versions.get("cv_reader", ""),
+        model=runtime.models_used.get("cv_reader") or resolve_role("cv_reader").model,
+    )

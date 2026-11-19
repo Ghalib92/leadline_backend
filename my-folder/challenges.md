@@ -10,6 +10,91 @@ Gemini as backup, Temporal for background jobs, React Router on the front end.
 
 ---
 
+## Stage 12 (19 Nov 2026): from a job to an application
+
+### A list of tools became a list of achievements
+- **What happened:** Brian's CV lists, under his PesaLink job, "PostgreSQL, Redis,
+  Celery, Docker, AWS". The first AI-tailored CV said he "Designed and maintained
+  PostgreSQL schemas, optimized queries for high throughput", and "Collaborated with
+  front-end developers using Git for source control and code reviews". None of it is
+  in his CV. The gap advice told him to say "all your development has been done on
+  Linux servers". His CV never mentions Linux.
+- **Why:** the model writes toward the posting. The posting asked for database work,
+  Linux and teamwork, so the model supplied them.
+- **Fix, in layers:** a prompt that names this exact pattern ("a tool listed under a
+  job is something they used, not something they designed"); then checks that send the
+  draft back once; then whatever is still unsupported is shown to the person as "Check
+  these lines: your CV doesn't say this".
+- **Result:** on every live run the first draft was sent back (3 to 9 unsupported
+  claims). After one rewrite, 4 to 8 lines are left flagged, all of them fair calls.
+- **Lesson:** you can't make a free model stop embellishing. You can make sure every
+  embellishment is pointed out before a person signs their name under it.
+
+### Word checks work on CV lines, not on letters
+- **Measured on the real draft:** every invented CV line had 4 or more words the CV
+  never uses, making up most of the line ("designed, maintained, schemas, optimized,
+  queries, throughput"). The honest lines had at most 2 ("version control",
+  "Agriculture and Technology" for JKUAT). Rule: 3+ new words and half the line.
+- **On the cover letter the same rule failed both ways.** "I designed and maintained
+  the supporting infrastructure" passed, because the posting itself says design and
+  maintain. "I would welcome the opportunity to discuss…" failed.
+- **Fix:** a second model reads the letter against the CV and quotes the sentences
+  it can't support. Code keeps only quotes really found in the letter.
+- **Lesson (again, see stage 9):** filters don't work on prose. Use code where text
+  is short and factual, and a second reader where it isn't.
+
+### The writer can't police itself; a smaller model can
+- Asked to check its own kind of letter, gpt-oss-120b (the writer) found nothing, twice.
+  The smaller gpt-oss-20b caught the stretched sentence 2 times in 3, with no false
+  alarms once told to skip greetings and closing lines. So it reads each letter twice.
+- At "high" reasoning effort the small model returned empty answers on every call:
+  it spent its whole output allowance thinking. Medium works.
+- The checker first got the candidate's job preferences too, and counted their wished-for
+  skills as evidence. Now it sees only the CV and their own summary.
+
+### The AI renamed M-Pesa to M-Pay
+- In three different runs the writer wrote "integrated the M‑Pay Daraja API". The CV
+  says M-Pesa. Word checks skipped it because "Pay" is 3 letters.
+- **Fix:** names (a capital plus a hyphen, an acronym, a capital inside a word: M-Pesa,
+  AWS, PesaLink, GraphQL) must appear in the CV. This is precise even on prose, so it
+  checks the letter too. Detail: models write M‑Pesa with a non-breaking hyphen (U+2011),
+  so hyphens are normalised before comparing.
+
+### "Not yet: Kubernetes, Go, Kafka" kept coming back
+- Brian's CV ends with a list of what he hasn't learned yet. The tailored CV copied it
+  into a job application three times, despite a prompt rule. The schema's own field
+  description said "and any other sections the CV has", contradicting the rule.
+- **Fix:** both texts agree now, and code removes such lines (and an emptied heading).
+  A CV lists what you have; what you lack goes in the gap notes.
+
+### A clean result that was really an empty one
+- Testing Gemini as the writer: no rewrite, zero lines flagged. It looked far better.
+  Then the screenshot showed an empty tailored CV and a letter on one line
+  ("Informatics,I am writing…"). Nothing was flagged because there was nothing to check.
+- **Fix:** the schema refuses an empty CV and a letter with no line breaks, so a bad
+  answer is retried (and falls back) instead of saved.
+- **Lesson:** a perfect score from a quality check is a reason to look harder, not to
+  celebrate. Look at the actual output.
+
+### Posting text was thrown away
+- To verify a job advert, the AI read its page, then the text was dropped. A letter
+  needs the posting. Jobs now keep it (6,000 characters, never sent to the browser).
+  Jobs saved earlier have their page read again when the letter is written. Both live
+  jobs (MyJobMag, Greenhouse) worked that way.
+
+### Small things
+- The Word file was named "savannah-informatics-backend-developer-at-savannah-informati":
+  job boards put the employer in the title already.
+- The tracker's Apply button was missing for jobs saved before postings were kept.
+- A gap note said Brian's "most recent title is Junior Python Developer" (it's his
+  earlier job). Gap notes aren't checked in code yet.
+- CV reading suggests only skills the CV's text actually names: "Kubernetes" from a
+  model's guess is dropped. Brian's read suggested 1 title and 5 skills (Django REST
+  Framework, Redis, Celery, AWS, Git) his preferences lacked.
+- Two test browsers at once timed out the dev server. Run e2e scripts one at a time.
+
+---
+
 ## Stage 11 (18-19 Nov 2026): job seekers
 
 ### "Find jobs from career pages" sounds easy, until you're in Kenya

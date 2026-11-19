@@ -16,7 +16,7 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from apps.common.jobs import enqueue
-from apps.organizations.choices import ProcessingStatus
+from apps.organizations.choices import DocumentCategory, ProcessingStatus
 from apps.organizations.models import Organization, OrganizationDocument
 from apps.organizations.services import lock_organization, record_event
 
@@ -195,7 +195,22 @@ def complete_processing(job: ProcessingJob, chunks, vectors) -> bool:
     document.processed_at = timezone.now()
     document.save(update_fields=["processing_status", "processed_at", "updated_at"])
     schedule_dossier_refresh(document.organization_id)
+    if _is_cv(document):
+        from .tasks import read_cv
+
+        enqueue(read_cv, document.pk)
     return True
+
+
+def _is_cv(document) -> bool:
+    """A job seeker's CV: a document filed as one, or their first document (a CV
+    uploaded as "Other")."""
+    if not document.organization.is_candidate:
+        return False
+    if document.category == DocumentCategory.CV:
+        return True
+    others = document.organization.documents.exclude(pk=document.pk)
+    return not others.filter(processing_status=ProcessingStatus.PROCESSED).exists()
 
 
 @transaction.atomic

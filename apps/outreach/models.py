@@ -246,6 +246,51 @@ class LeadPitch(UUIDTimestampedModel):
         return f"Pitch for {self.opportunity_id} ({self.status})"
 
 
+class JobApplication(UUIDTimestampedModel):
+    """A job seeker's application for an approved job: a cover letter and a CV tailored
+    to the posting, written from their own CV (never invented experience), with advice
+    on the gaps. People edit both; Leadline never applies for them."""
+
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="+")
+    opportunity = models.OneToOneField(
+        Opportunity, on_delete=models.CASCADE, related_name="application"
+    )
+    status = models.CharField(
+        max_length=10, choices=PitchStatus.choices, default=PitchStatus.WRITING
+    )
+    instructions = models.TextField(blank=True, default="")  # the person's, for a rewrite
+    cover_letter = models.TextField(blank=True, default="")
+    cv = models.TextField(blank=True, default="")  # simple Markdown, exported to Word
+    gaps = models.JSONField(default=list, blank=True)  # how to handle what the CV lacks
+    # Lines of the letter or CV whose words the CV doesn't use: for the person to check.
+    unverified = models.JSONField(default=list, blank=True)
+    cv_document_title = models.CharField(max_length=200, blank=True, default="")  # read from
+    edited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+",
+    )  # fmt: skip
+    edited_at = models.DateTimeField(null=True, blank=True)
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+",
+    )  # fmt: skip  # null when started by the approval
+    writing_started_at = models.DateTimeField(null=True, blank=True)
+    error = models.CharField(max_length=500, blank=True, default="")
+    prompt_id = models.CharField(max_length=60, blank=True, default="")
+    model = models.CharField(max_length=120, blank=True, default="")
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(status__in=PitchStatus.values),
+                name="outreach_application_valid_status",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Application for {self.opportunity_id} ({self.status})"
+
+
 class LeadActivity(UUIDTimestampedModel):
     """One attempt to reach a client lead and what came of it, logged by a person. The
     newest is the lead's current state on the call list."""

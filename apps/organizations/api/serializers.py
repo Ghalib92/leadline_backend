@@ -499,9 +499,10 @@ class JobBriefSerializer(serializers.ModelSerializer):
             "companies",
             "excluded_keywords",
             "notes",
+            "cv_suggestions",
             "updated_at",
         ]
-        read_only_fields = ["updated_at"]
+        read_only_fields = ["cv_suggestions", "updated_at"]
 
     def validate_salary_currency(self, value):
         return value.upper()
@@ -509,6 +510,10 @@ class JobBriefSerializer(serializers.ModelSerializer):
     def validate_companies(self, value):
         """Career page links (or company names): each kept once, trimmed."""
         return list(dict.fromkeys(item.strip() for item in value if item.strip()))
+
+
+class ReadCvSerializer(serializers.Serializer):
+    document_id = serializers.CharField(max_length=22, required=False, allow_blank=True)
 
 
 class TenderBriefSerializer(serializers.ModelSerializer):

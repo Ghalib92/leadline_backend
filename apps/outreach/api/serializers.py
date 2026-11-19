@@ -1,9 +1,18 @@
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from apps.organizations.choices import OpportunityType
+
 from ..checks import MAX_REMINDER_DAYS
 from ..choices import ContactKind, EmailPurpose, LeadChannel, LeadOutcome
-from ..models import Contact, ContactSearch, LeadActivity, LeadPitch, OutreachEmail
+from ..models import (
+    Contact,
+    ContactSearch,
+    JobApplication,
+    LeadActivity,
+    LeadPitch,
+    OutreachEmail,
+)
 
 
 def _person(user):
@@ -275,6 +284,49 @@ class PitchEditSerializer(serializers.Serializer):
     )
 
 
+class JobApplicationSerializer(serializers.ModelSerializer):
+    edited_by = serializers.SerializerMethodField()
+    apply_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = JobApplication
+        fields = [
+            "id",
+            "status",
+            "cover_letter",
+            "cv",
+            "gaps",
+            "unverified",
+            "cv_document_title",
+            "apply_url",
+            "instructions",
+            "error",
+            "edited_by",
+            "edited_at",
+            "writing_started_at",
+            "prompt_id",
+            "model",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+    def get_edited_by(self, application) -> dict | None:
+        return _person(application.edited_by)
+
+    def get_apply_url(self, application) -> str:
+        """Where to apply: the posting's application link, else the posting."""
+        opportunity = application.opportunity
+        return (opportunity.job or {}).get("apply_url") or opportunity.source_url
+
+
+class ApplicationEditSerializer(serializers.Serializer):
+    cover_letter = serializers.CharField(max_length=6000, required=False, allow_blank=True)
+    cv = serializers.CharField(max_length=15000, required=False, allow_blank=True)
+    gaps = serializers.ListField(
+        child=serializers.CharField(max_length=600), max_length=4, required=False
+    )
+
+
 class LeadActivitySerializer(serializers.ModelSerializer):
     actor = serializers.SerializerMethodField()
 
@@ -301,15 +353,24 @@ class CallListPitchSerializer(serializers.Serializer):
     email_body = serializers.CharField()
 
 
+class CallListApplicationSerializer(serializers.Serializer):
+    status = serializers.CharField()
+
+
 class CallListItemSerializer(serializers.Serializer):
     """One approved client lead on the call list: how to reach it, why, what to say and
-    what happened last."""
+    what happened last. For a job seeker, one approved job on their application tracker
+    (employer, where to apply, by when, the application's state)."""
 
     id = serializers.CharField()
     title = serializers.CharField()
     status = serializers.CharField()
     match_score = serializers.IntegerField()
     location = serializers.CharField()
+    funder = serializers.CharField()
+    deadline = serializers.DateTimeField(allow_null=True)
+    apply_url = serializers.SerializerMethodField()
+    application = serializers.SerializerMethodField()
     category = serializers.SerializerMethodField()
     phone = serializers.SerializerMethodField()
     whatsapp_number = serializers.SerializerMethodField()
@@ -335,6 +396,19 @@ class CallListItemSerializer(serializers.Serializer):
 
     def get_whatsapp_number(self, lead) -> str:
         return whatsapp_number(lead)
+
+    def get_apply_url(self, lead) -> str:
+        """A job's application link, else its posting; "" for client leads."""
+        if lead.opportunity_type != OpportunityType.JOB:
+            return ""
+        return (lead.job or {}).get("apply_url") or lead.source_url
+
+    @extend_schema_field(CallListApplicationSerializer(allow_null=True))
+    def get_application(self, lead):
+        application = getattr(lead, "application", None)
+        if application is None:
+            return None
+        return CallListApplicationSerializer(application).data
 
     def get_email(self, lead) -> str:
         return self._business(lead).get("email", "")

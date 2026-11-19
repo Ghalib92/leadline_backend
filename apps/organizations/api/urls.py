@@ -86,6 +86,16 @@ urlpatterns = [
         name="job-brief",
     ),
     path(
+        "<shortuuid:organization_id>/job-brief/read-cv/",
+        views.JobBriefReadCvView.as_view(),
+        name="job-brief-read-cv",
+    ),
+    path(
+        "<shortuuid:organization_id>/job-brief/dismiss-suggestions/",
+        views.JobBriefDismissSuggestionsView.as_view(),
+        name="job-brief-dismiss-suggestions",
+    ),
+    path(
         "<shortuuid:organization_id>/tender-brief/",
         views.TenderBriefView.as_view(),
         name="tender-brief",

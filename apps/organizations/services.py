@@ -599,10 +599,106 @@ def update_client_brief(*, organization_id, actor, **data):
 
 @transaction.atomic
 def update_job_brief(*, organization_id, actor, **data):
-    """What a candidate looks for; Jobs agents read it on their next run."""
-    return _update_brief(
+    """What a candidate looks for; Jobs agents read it on their next run. Suggestions
+    from their CV that they have now added are dropped."""
+    brief = _update_brief(
         JobBrief, "job_brief.updated", organization_id=organization_id, actor=actor, data=data
     )
+    suggestions = brief.cv_suggestions or {}
+    pending = {
+        field: _not_listed(getattr(brief, field), suggestions.get(field) or [])
+        for field in CV_SUGGESTED_FIELDS
+    }
+    if any(pending[field] != (suggestions.get(field) or []) for field in pending):
+        brief.cv_suggestions = suggestions | pending
+        brief.save(update_fields=["cv_suggestions", "updated_at"])
+    return brief
+
+
+# ---------------------------------------------------------------------------
+# Reading a job seeker's CV into their job preferences
+# ---------------------------------------------------------------------------
+
+CV_FILLED_FIELDS = ("headline", "target_roles", "skills", "years_experience", "seniority")
+CV_SUGGESTED_FIELDS = ("target_roles", "skills")  # offered when the list isn't empty
+
+
+def _not_listed(current, found) -> list:
+    listed = {str(item).strip().lower() for item in current or []}
+    return [item for item in found if str(item).strip().lower() not in listed]
+
+
+@transaction.atomic
+def save_cv_facts(organization_id, *, document_id, document_title, facts, prompt_id, model):
+    """What reading the CV found (a background job, no person): empty fields of the job
+    preferences are filled in; job titles and skills the lists don't have yet are kept
+    as suggestions for the person to add or dismiss. Nothing they wrote is replaced."""
+    organization = (
+        Organization.objects.select_for_update()
+        .filter(pk=organization_id, account_type=AccountType.CANDIDATE, archived_at=None)
+        .first()
+    )
+    if organization is None:
+        return None
+    brief, _ = JobBrief.objects.select_for_update().get_or_create(organization=organization)
+    filled = []
+    for field in CV_FILLED_FIELDS:
+        value = facts.get(field)
+        if value in (None, "", []) or getattr(brief, field) not in (None, "", []):
+            continue
+        setattr(brief, field, value)
+        filled.append(field)
+    brief.cv_suggestions = {
+        "document_id": document_id,
+        "document_title": document_title[:200],
+        "read_at": timezone.now().isoformat(),
+        "filled": filled,
+        **{
+            field: [] if field in filled else _not_listed(getattr(brief, field), facts.get(field))
+            for field in CV_SUGGESTED_FIELDS
+        },
+        "prompt_id": prompt_id,
+        "model": model,
+    }
+    brief.save()
+    _event(
+        organization,
+        None,
+        "job_brief.read_from_cv",
+        target_id=document_id,
+        metadata={"filled": filled},
+    )
+    return brief
+
+
+@transaction.atomic
+def dismiss_cv_suggestions(*, organization_id, actor):
+    """The person doesn't want the remaining suggestions from their CV."""
+    organization = _locked_organization(organization_id, actor)
+    brief, _ = JobBrief.objects.get_or_create(organization=organization)
+    if any(brief.cv_suggestions.get(field) for field in CV_SUGGESTED_FIELDS):
+        brief.cv_suggestions = brief.cv_suggestions | dict.fromkeys(CV_SUGGESTED_FIELDS, [])
+        brief.save(update_fields=["cv_suggestions", "updated_at"])
+    return brief
+
+
+@transaction.atomic
+def request_cv_read(*, organization_id, actor, document_id=None):
+    """Read the CV (the given document, else the likeliest one) into the job preferences
+    again, in the background."""
+    from apps.common.jobs import enqueue
+    from apps.knowledge.selectors import cv_document
+    from apps.knowledge.tasks import read_cv
+
+    organization = _locked_organization(organization_id, actor)
+    if not organization.is_candidate:
+        raise Conflict("Only job seekers have a CV to read.", code="not_a_candidate")
+    document = cv_document(organization, document_id)
+    if document is None:
+        raise Conflict("Upload your CV first; it's read once it's processed.", code="no_cv")
+    enqueue(read_cv, document.pk)
+    _event(organization, actor, "job_brief.cv_read_requested", target_id=document.pk)
+    return document
 
 
 @transaction.atomic

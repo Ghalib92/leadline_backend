@@ -1,5 +1,5 @@
-"""Reads for contacts, outreach, client-lead pitches, the call list and deadlines, always
-scoped to one organization."""
+"""Reads for contacts, outreach, client-lead pitches, job applications, the call list
+(a job seeker's application tracker) and deadlines, always scoped to one organization."""
 
 from datetime import datetime, time, timedelta
 
@@ -7,11 +7,13 @@ from django.conf import settings
 from django.db.models import Case, F, IntegerField, OuterRef, Q, Subquery, Value, When
 from django.utils import timezone
 
-from apps.discovery.selectors import dossier_content, profile_context
+from apps.discovery.selectors import dossier_content, job_brief_context, profile_context
+from apps.knowledge.selectors import cv_document, document_text
 from apps.opportunities.choices import ACTIVE_PIPELINE_STATUSES, ReviewDecision
 from apps.opportunities.models import Opportunity
 from apps.organizations.choices import LeadSignal, OpportunityType
 from apps.organizations.models import OrganizationMembership
+from apps.organizations.selectors import job_brief_for
 
 from .choices import CLOSED_OUTCOMES, CallListView
 from .models import LeadActivity, OutreachEmail, ReminderLog, ReminderPreference
@@ -248,21 +250,65 @@ def _sender(pitch) -> dict:
     return {"name": name, "organization": pitch.organization.name} if name else {}
 
 
+def application_for(opportunity):
+    return getattr(opportunity, "application", None)
+
+
+def application_inputs(application, *, max_cv_chars: int, max_posting_chars: int) -> dict:
+    """The application writer's inputs: the candidate with their CV's text, and the job
+    with its posting ("" when it was saved without it: the job reads its page)."""
+    organization, opportunity = application.organization, application.opportunity
+    brief = job_brief_for(organization)
+    document = cv_document(organization)
+    candidate = {
+        "name": organization.name,
+        "about": organization.description,
+        "city": organization.city,
+        "country": organization.country,
+        "job_preferences": job_brief_context(organization),
+        "years_experience": brief.years_experience,
+        "cv": document_text(document, max_cv_chars) if document else "",
+    }
+    job = opportunity.job or {}
+    facts = {k: v for k, v in job.items() if k not in ("url", "apply_url", "system", "posting")}
+    posting = job.get("posting") or ""
+    details = {
+        "title": opportunity.title,
+        "employer": opportunity.funder,
+        "location": opportunity.location,
+        "facts": facts,
+        "summary": opportunity.summary,
+        "requirements": (opportunity.requirements or {}).get("items", []),
+        "why_it_fits": opportunity.match_reasons,
+        "gaps": (opportunity.requirements or {}).get("concerns", []),
+        "apply_by": opportunity.deadline.date().isoformat() if opportunity.deadline else "",
+        "posting": posting[:max_posting_chars],
+    }
+    return {
+        "candidate": {k: v for k, v in candidate.items() if v not in ("", None, [], {})},
+        "job": {k: v for k, v in details.items() if v not in ("", None, [], {})},
+        "cv_title": document.title if document else "",
+        "page_url": "" if posting else opportunity.source_url,
+    }
+
+
 def activities_for(opportunity):
     return opportunity.lead_activities.select_related("actor")
 
 
 def call_list(organization, *, view: str = CallListView.ALL):
     """Approved client leads with their latest contact, in working order: follow-ups that
-    are due, then leads never contacted (best first), then the rest by follow-up date."""
+    are due, then leads never contacted (best first), then the rest by follow-up date.
+    For a job seeker, the same for their approved jobs: the application tracker."""
     latest = LeadActivity.objects.filter(opportunity=OuterRef("pk")).order_by("-created_at", "-id")
+    kind = OpportunityType.JOB if organization.is_candidate else OpportunityType.CLIENT
     leads = (
         Opportunity.objects.filter(
             organization=organization,
-            opportunity_type=OpportunityType.CLIENT,
+            opportunity_type=kind,
             status__in=CALL_LIST_STATUSES,
         )
-        .select_related("pitch", "organization")
+        .select_related("pitch", "application", "organization")
         .annotate(
             last_outcome=Subquery(latest.values("outcome")[:1]),
             last_channel=Subquery(latest.values("channel")[:1]),
