@@ -10,6 +10,69 @@ Gemini as backup, Temporal for background jobs, React Router on the front end.
 
 ---
 
+## Stage 13 (19 Nov 2026): getting it online
+
+### Moving the UI to Vercel made every visitor look like one person
+- **What happened:** the UI renders on its own server, which calls the API for each
+  visitor. On Vercel, every request reaches Django from Vercel's machines. Django's
+  sign-in limit is 5 attempts a minute *per address*: on launch day it would have been
+  5 a minute for all of Kenya together.
+- **Why it's easy to miss:** locally there is one person, so nothing looks wrong. The
+  API also has to be public now (Vercel calls it over the internet), so we can't just
+  trust an "X-Forwarded-For" header: anyone can send one.
+- **Fix:** the UI server sends the visitor's address with a shared secret; Django
+  believes the address only when the secret matches. Our own proxy (Caddy) reports
+  the connecting address for everyone else.
+- **Lesson:** every time a proxy goes in front of your app, ask "who does the app
+  think the visitor is now?". Rate limits, audit logs and abuse checks all depend on it.
+
+### Vercel caps a request at 4.5 MB; tender documents are 25 MB
+- **What happened:** documents went browser → UI server → API, so the UI server could
+  add the login token (the browser never holds one). On Vercel that path can't carry
+  more than 4.5 MB either way.
+- **Fix:** transfer tickets. The UI server asks the API for a ticket that is good for
+  one file, one path, one method, for 10 minutes; the browser then sends or fetches the
+  file straight from the API. Still no token in the browser, and the API still checks
+  membership.
+- **Proof:** a 6 MB PDF, in a real browser: ticket, CORS preflight, upload, 201.
+- **Lesson:** "serverless" hosting has limits that a normal server doesn't (body size,
+  time). Find them before choosing where the big files flow.
+
+### The production settings would have crashed on the first start
+- **What happened:** the production settings listed WhiteNoise (a static-files library)
+  that was never installed. Twelve stages of development never loaded those settings.
+- **Fix:** installed it, and added a test that loads the production settings and runs
+  Django's `check --deploy` on every test run.
+- **Lesson:** code paths you never run locally (production settings, error pages,
+  cron jobs) need a test that runs them, or the server finds the bug for you.
+
+### Each process kept its own count
+- **What happened:** Django's default cache lives inside each process. The API runs 3
+  of them, plus the background worker, so every rate limit (sign-ins, the search
+  API's 60 a minute) would have counted 4 times over, separately.
+- **Fix:** a 64 MB Redis shared by all processes.
+
+### 100 ms or 4 ms
+- **What happened:** Vercel runs functions in the US by default. Every page makes
+  several API calls, and the API server is in Europe.
+- **Measured from the server:** 103 ms to Vercel's US region, 4.5 ms to Frankfurt. The
+  UI now runs in Frankfurt, next to the API.
+- **Lesson:** put the code that calls the database next to the database. A page that
+  makes 5 calls pays the distance 5 times.
+
+### Small things that would have cost an evening each
+- The Temporal server image runs as a non-root user and couldn't write to a fresh
+  Docker volume: mount it at a folder the image's user already owns.
+- The test runner's fake browser sent file uploads as plain text, so the upload tests
+  passed or failed for the wrong reasons. Only a real browser proved the new upload.
+- digitalappex.com's email has no SPF record: mail from it would likely land in spam.
+- The first deploy reported success but skipped its last steps (the nightly backup
+  job). The server-side steps were piped to the server over ssh, and a
+  `docker compose exec` inside them read the rest of the script as its own input. The
+  steps now run from a file on the server.
+
+---
+
 ## Stage 12 (19 Nov 2026): from a job to an application
 
 ### A list of tools became a list of achievements
