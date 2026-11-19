@@ -6,11 +6,12 @@
 # Keeps 14 days. The copies sit on the same disk as the data: download them now and
 # then (scp root@<server>:/srv/leadline/backups/...), or sync them somewhere else.
 set -euo pipefail
+umask 077  # the dumps hold users' data: root only
 cd "$(dirname "$0")"
 
 label="${1:-manual}"
 stamp="$(date +%Y%m%d-%H%M%S)"
-mkdir -p backups
+mkdir -p backups && chmod 700 backups
 
 docker compose exec -T postgres sh -c \
     'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom' \
