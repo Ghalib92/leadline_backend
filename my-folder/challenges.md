@@ -446,3 +446,18 @@ Gemini as backup, Temporal for background jobs, React Router on the front end.
   honesty, and reading the drafts confirmed it: one invented "completed on time and
   within budget", the other wrote a [TODO]. Lesson: an AI judge needs a neutral
   provider and a reading by a person, and one score per criterion beats one total.
+
+### A free AI tier that learns from what you send
+- Writing the privacy page meant listing where user data goes, and that turned up a
+  problem: Google's free Gemini tier uses prompts to improve its products, lets people
+  read them, and its terms say not to send personal or confidential data. Leadline had
+  just moved CVs and company documents to Gemini first. Now every AI task is private by
+  default, only tasks that read public pages may use free Gemini, and a setting lists
+  the providers trusted with private data. Lesson: write the privacy notice early; it
+  is an audit of the system, not paperwork.
+
+### Words only the builders understood
+- The sidebar said "Workers", "Outreach", "Integrations" and put setup at the bottom.
+  Mohaa's test: would a business owner know what each one is? Now the labels say what
+  things do ("Searches", "Funder emails") in the order people use the app, and a short
+  tour walks through it once.
