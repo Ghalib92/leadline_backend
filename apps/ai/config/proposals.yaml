@@ -8,7 +8,7 @@ budget:
   max_searches: 60        # company-document searches: one per section and per checklist item
   max_pages: 5            # the call's own web page, plus a tender's documents
   max_tokens: 160000
-  max_wall_seconds: 600
+  max_wall_seconds: 900    # Gemini drafts a section in about a minute (3 at a time)
 
 # Sections the outline may have. Calls usually ask for 5-8.
 max_sections: 10

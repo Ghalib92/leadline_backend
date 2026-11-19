@@ -93,6 +93,10 @@ roles:
     max_tokens: 6000
     description: Plans the proposal's sections from the requirements and the company's evidence.
   drafter:
+    # Gemini first (2026-11-19 side-by-side): both graders scored it more honest, and
+    # gpt-oss invented a "delivered on time and on budget" claim where Gemini wrote a
+    # [TODO]. Slower (about a minute a section), but sections run in parallel.
+    providers: [gemini]
     tier: answer
     reasoning_effort: medium
     max_tokens: 8000
@@ -117,8 +121,8 @@ roles:
     max_tokens: 2000
     description: Turns repeated rejection reasons into suggested excluded keywords.
   eval_grader:
-    # Grades the writers' drafts: not the writers' own provider (Groq).
-    providers: [gemini]
+    # Grades the drafter's work: never the drafter's own provider (Gemini). In the
+    # side-by-side each grader scored its own provider's draft higher.
     tier: answer
     reasoning_effort: medium
     max_tokens: 3000
@@ -142,6 +146,9 @@ roles:
     max_tokens: 3000
     description: Writes a WhatsApp message, an email and call points for an approved client lead.
   application_writer:
+    # Stays on Groq (2026-11-19 side-by-side): Gemini left fewer unsupported lines but
+    # took 90-150 s against 12-14 s, on a screen people wait on; the checker already
+    # flags unsupported lines for the person.
     tier: answer
     # Medium was slower and no more faithful in trials; the checks do the policing.
     reasoning_effort: low
