@@ -429,3 +429,12 @@ Gemini as backup, Temporal for background jobs, React Router on the front end.
 - The portal answers "too many requests" to quick bursts. Leadline paces its page
   requests, waits out a rate-limit reply once, and reuses the tender list for 30
   minutes across runs (about 400 open tenders, 5 requests).
+
+### The backup model had quietly retired
+- Adding a second Gemini key, a live check showed Google had stopped serving
+  gemini-2.5-flash-lite to anyone, and gemini-2.5-flash to new accounts. The light
+  tier's fallback had been failing in production without anyone noticing, because
+  Groq rarely needed it. Moved to the 3.5 models, which both keys can call, and
+  now check every fallback model with a real call (`ai_ping`) when keys change.
+- Google answers a wrong key with HTTP 400 ("API_KEY_INVALID"), not 401 or 403, so
+  the switch to the backup key didn't fire until that answer was recognised.
