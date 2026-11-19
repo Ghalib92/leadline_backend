@@ -45,6 +45,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "apps.common.middleware.ClientIPMiddleware",
     'django.middleware.security.SecurityMiddleware',
     "corsheaders.middleware.CorsMiddleware",
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -220,6 +221,30 @@ REST_FRAMEWORK = {
     # Disable DRF's renderer override so CSV is not rejected before the view runs.
     "URL_FORMAT_OVERRIDE": None,
 }
+
+# One cache for every process (the API's workers and the Temporal worker): throttles and
+# the per-minute search limit count across all of them. Without REDIS_URL each process
+# keeps its own (fine with one process, locally).
+REDIS_URL = config("REDIS_URL", default="")
+if REDIS_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": REDIS_URL,
+            "KEY_PREFIX": "leadline",
+        }
+    }
+
+# Who the visitor is, for throttles (see apps.common.middleware). Behind our own edge
+# proxy, the header it sets with the connecting address (Caddy: X-Real-IP); empty uses
+# the connection itself. The UI server calls the API for every visitor and vouches
+# for their address with UI_PROXY_SECRET (the same value in the UI's environment).
+# How long a file transfer ticket (a direct upload or download) stays valid.
+TRANSFER_TICKET_SECONDS = config("TRANSFER_TICKET_SECONDS", cast=int, default=600)
+# The API's own docs (Swagger at / and /api/docs/). Production turns them off by default.
+API_DOCS_ENABLED = config("API_DOCS_ENABLED", cast=bool, default=True)
+TRUSTED_CLIENT_IP_HEADER = config("TRUSTED_CLIENT_IP_HEADER", default="")
+UI_PROXY_SECRET = config("UI_PROXY_SECRET", default="")
 
 ALLOWED_HOSTS = config("DJANGO_ALLOWED_HOSTS", cast=Csv(), default="localhost,127.0.0.1,testserver")
 CORS_ALLOWED_ORIGINS = config("CORS_ALLOWED_ORIGINS", cast=Csv(), default="http://localhost:3000")

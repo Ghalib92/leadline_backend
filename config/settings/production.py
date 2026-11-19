@@ -7,9 +7,14 @@ DEBUG = False
 SECRET_KEY = config("DJANGO_SECRET_KEY")
 ALLOWED_HOSTS = config("DJANGO_ALLOWED_HOSTS", cast=Csv())
 
-INSTALLED_APPS += [
-    'whitenoise.runserver_nostatic',
-]
+# The API is public (the UI's server calls it from Vercel); its docs need not be.
+API_DOCS_ENABLED = config("API_DOCS_ENABLED", cast=bool, default=False)
+
+# Static files (the admin, the API docs) are served by Django itself, through WhiteNoise.
+MIDDLEWARE.insert(
+    MIDDLEWARE.index("django.middleware.security.SecurityMiddleware") + 1,
+    "whitenoise.middleware.WhiteNoiseMiddleware",
+)
 
 if not ALLOWED_HOSTS:
     raise ImproperlyConfigured(

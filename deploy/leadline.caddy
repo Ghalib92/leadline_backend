@@ -1,0 +1,21 @@
+# Leadline's API. scripts/deploy.sh copies this to /srv/edge/sites/ and reloads Caddy.
+# The UI is on Vercel; its server calls this API for every visitor.
+leadline-api.digitalappex.com {
+	encode zstd gzip
+
+	# Documents go up to 25 MB (ORGANIZATION_DOCUMENT_MAX_UPLOAD_MB); a little room.
+	request_body {
+		max_size 30MB
+	}
+
+	# The connecting address, for Django (TRUSTED_CLIENT_IP_HEADER). The UI server
+	# vouches for its visitors' addresses with its own secret header.
+	reverse_proxy leadline-api:8000 {
+		header_up X-Real-IP {client_ip}
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

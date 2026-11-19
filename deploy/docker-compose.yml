@@ -1,0 +1,139 @@
+# Leadline's backend on the server: the API, the Temporal worker, and what they need.
+# The UI runs on Vercel and calls the API at https://leadline-api.digitalappex.com.
+#
+# Lives at /srv/leadline/docker-compose.yml, next to .env and backend/ (the code).
+# scripts/deploy.sh puts it there; see deploy/README.md.
+#
+# Only the shared edge proxy (/srv/edge, Caddy) is reachable from the internet: the
+# API joins its `edge` network as `leadline-api`. Everything else stays on `internal`.
+
+name: leadline
+
+x-backend: &backend
+  image: leadline-backend:latest
+  restart: unless-stopped
+  env_file: .env
+  environment:
+    DJANGO_SETTINGS_MODULE: config.settings.production
+    DB_HOST: postgres
+    DB_PORT: "5432"
+    REDIS_URL: redis://redis:6379/0
+    TEMPORAL_ADDRESS: temporal:7233
+    TRUSTED_CLIENT_IP_HEADER: X-Real-IP
+  volumes:
+    - media:/app/media
+  logging: &logging
+    driver: json-file
+    options:
+      max-size: "20m"
+      max-file: "5"
+
+services:
+  api:
+    <<: *backend
+    build: ./backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # As if through the proxy (https), or the SSL redirect would answer instead.
+      test:
+        - CMD
+        - curl
+        - -fsS
+        - -H
+        - "X-Forwarded-Proto: https"
+        - http://localhost:8000/api/v1/health/
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    networks:
+      edge:
+        # Unique on the shared network: every app there has a service called "web".
+        aliases: [leadline-api]
+      internal:
+
+  worker:
+    <<: *backend
+    command: ["python", "manage.py", "temporal_worker", "--wait", "120"]
+    depends_on:
+      # Migrated first: the API applies migrations when it starts.
+      api:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+    networks:
+      - internal
+
+  temporal:
+    # The Temporal server; its history is a file on the temporal volume (mounted at the
+    # image user's home, which it can write). Its web UI is on the server's localhost
+    # only: ssh -L 8233:localhost:8233 <server>.
+    image: temporalio/temporal:1.9.1
+    restart: unless-stopped
+    command:
+      - server
+      - start-dev
+      - --ip=0.0.0.0
+      - --db-filename=/home/temporal/temporal.db
+      - --namespace=default
+      - --log-level=warn
+    volumes:
+      - temporal:/home/temporal
+    ports:
+      - "127.0.0.1:8233:8233"
+    healthcheck:
+      test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "localhost:7233"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging: *logging
+    networks:
+      - internal
+
+  postgres:
+    image: pgvector/pgvector:0.8.7-pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+    networks:
+      - internal
+
+  redis:
+    # The shared cache: throttles and the search rate limit count across processes.
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: >-
+      redis-server --maxmemory 64mb --maxmemory-policy allkeys-lru
+      --save "" --appendonly no
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+    networks:
+      - internal
+
+volumes:
+  pgdata:
+  media:
+  temporal:
+
+networks:
+  edge:
+    external: true
+  internal:

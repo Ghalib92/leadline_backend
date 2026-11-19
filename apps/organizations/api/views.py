@@ -9,9 +9,11 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.settings import api_settings
 from rest_framework.throttling import ScopedRateThrottle
 
 from apps.authentication.permissions import IsVerified
+from apps.common.api.tickets import TicketAuthentication
 
 from .. import selectors, services
 from ..choices import DocumentCategory
@@ -739,6 +741,8 @@ class OrgSourceDetailView(OrganizationAPIView):
 )
 class DocumentListCreateView(OrganizationAPIView, generics.ListAPIView):
     serializer_class = DocumentSerializer
+    # The browser uploads straight here with a transfer ticket (see apps.common.api.tickets).
+    authentication_classes = [*api_settings.DEFAULT_AUTHENTICATION_CLASSES, TicketAuthentication]
     parser_classes = [MultiPartParser, FormParser]
 
     def get_throttles(self):
@@ -811,7 +815,10 @@ class DocumentDetailView(OrganizationAPIView):
     responses={(200, "application/octet-stream"): bytes},
 )
 class DocumentDownloadView(OrganizationAPIView):
-    """Files are only served through this member-checked view, never from a public URL."""
+    """Files are only served through this member-checked view, never from a public URL.
+    The browser downloads straight from here with a transfer ticket."""
+
+    authentication_classes = [*api_settings.DEFAULT_AUTHENTICATION_CLASSES, TicketAuthentication]
 
     lookup_url_kwarg = "document_id"
 
