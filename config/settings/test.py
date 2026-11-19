@@ -32,6 +32,7 @@ REST_FRAMEWORK = {
 AI_LLM_PROVIDER = "groq"
 AI_MODEL_TIERS = {"light": "test-light", "research": "test-research", "answer": "test-answer"}
 GROQ_API_KEY = ""
+GROQ_API_KEY_2 = ""
 
 # Deterministic in-process embeddings: no model download in tests.
 KNOWLEDGE_EMBEDDING_PROVIDER = "hashing"
@@ -47,6 +48,7 @@ HUNTER_API_KEY = ""
 # or speed-check keys unless a test sets them.
 AI_FALLBACK_PROVIDER = ""
 GEMINI_API_KEY = ""
+GEMINI_API_KEY_2 = ""
 JINA_API_KEY = ""
 FIRECRAWL_API_KEY = ""
 PAGESPEED_API_KEY = ""

@@ -308,6 +308,9 @@ AI_MODEL_TIERS = {
     "answer": config("ANSWER_MODEL", default=""),
 }
 GROQ_API_KEY = config("GROQ_API_KEY", default="")
+# Backup keys (another account or project): a call the first key can't make, for its
+# rate limit or daily cap or because it was rejected, is made with the backup key.
+GROQ_API_KEY_2 = config("GROQ_API_KEY_2", default="")
 # Fallback provider: calls the primary refuses for its rate limit, or can't answer,
 # go to this provider's model for the same tier. Empty AI_FALLBACK_PROVIDER = no
 # fallback. Gemini's free tier has its own daily limits, separate from Groq's.
@@ -318,6 +321,7 @@ AI_FALLBACK_TIERS = {
     "answer": config("FALLBACK_ANSWER_MODEL", default=""),
 }
 GEMINI_API_KEY = config("GEMINI_API_KEY", default="")
+GEMINI_API_KEY_2 = config("GEMINI_API_KEY_2", default="")
 
 # Agent tools. Tavily is the web search provider; its dev plan allows 100 requests a
 # minute, so stay below that (the limit is shared through the cache).

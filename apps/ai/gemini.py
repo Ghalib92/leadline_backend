@@ -15,7 +15,7 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.runnables import RunnableLambda
 from pydantic import ValidationError
 
-from apps.ai.exceptions import AIConfigError
+from apps.ai.exceptions import KeyRejected
 from apps.ai.tools.http import get_http_client
 
 ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -28,6 +28,10 @@ class GeminiError(Exception):
     def __init__(self, message: str, *, status_code: int | None = None):
         super().__init__(message)
         self.status_code = status_code
+
+
+class GeminiRateLimited(GeminiError):
+    """Gemini's rate limit or daily cap for this key (HTTP 429)."""
 
 
 class ChatGemini(BaseChatModel):
@@ -125,10 +129,13 @@ class ChatGemini(BaseChatModel):
             if response.status_code in RETRY_STATUSES and attempt < self.max_retries:
                 time.sleep(2**attempt)
                 continue
-            if response.status_code in (401, 403):
-                raise AIConfigError("GEMINI_API_KEY was rejected.")
+            # A wrong key is a 400 with reason API_KEY_INVALID; a revoked or blocked one
+            # is a 401 or 403.
+            if response.status_code in (401, 403) or "API_KEY_INVALID" in response.text:
+                raise KeyRejected("A GEMINI_API_KEY was rejected.")
             if response.status_code >= 400:
-                raise GeminiError(
+                error = GeminiRateLimited if response.status_code == 429 else GeminiError
+                raise error(
                     f"Gemini returned HTTP {response.status_code}: {_error(response)}",
                     status_code=response.status_code,
                 )

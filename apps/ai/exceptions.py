@@ -2,6 +2,11 @@ class AIConfigError(Exception):
     """The AI layer is misconfigured: unknown role or tier, missing model or API key."""
 
 
+class KeyRejected(AIConfigError):
+    """The provider rejected the API key (revoked, wrong, or its project blocked). A
+    backup key can still make the call."""
+
+
 class PromptError(Exception):
     """A prompt file is missing, or was rendered with the wrong variables."""
 

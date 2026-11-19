@@ -9,6 +9,12 @@ primary provider refuses for its rate limit, or can't answer (down, timed out), 
 sent to the fallback model instead, so a run doesn't stop at a free tier's daily cap.
 So is a request too large for the primary's plan (Groq's free tier: one request may
 not exceed the tokens-per-minute limit).
+
+Each provider may have a backup key (GROQ_API_KEY_2, GEMINI_API_KEY_2). A call the
+first key can't make (its rate limit or daily cap, or the key was rejected) is made
+with the backup key, on the same model, before the fallback provider is tried. An
+outage or a request too large for the plan skips the backup key, which would fail the
+same way.
 """
 
 import logging
@@ -19,7 +25,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.runnables.fallbacks import RunnableWithFallbacks
 
 from apps.ai.config.loader import ResolvedModel, resolve_role
-from apps.ai.exceptions import AIConfigError, RequestTooLarge
+from apps.ai.exceptions import AIConfigError, KeyRejected, RequestTooLarge
 
 logger = logging.getLogger(__name__)
 ProviderFactory = Callable[[ResolvedModel], BaseChatModel]
@@ -80,20 +86,37 @@ def _fallback_for(resolved: ResolvedModel) -> BaseChatModel | None:
 
 
 def _fallback_errors() -> tuple[type[BaseException], ...]:
-    """What the primary may fail with that a fallback can fix: rate limits, requests
-    too large for the plan, outages, timeouts. A bad answer or another bad request is
-    not among them."""
+    """What the primary may fail with that a fallback can fix: rate limits, rejected
+    keys, requests too large for the plan, outages, timeouts. A bad answer or another
+    bad request is not among them."""
     import groq
 
     from apps.ai.gemini import GeminiError
 
     return (
         groq.RateLimitError,
+        groq.AuthenticationError,
+        groq.PermissionDeniedError,
         groq.APIConnectionError,
         groq.InternalServerError,
         RequestTooLarge,
+        KeyRejected,
         GeminiError,
     )
+
+
+def api_keys(*names: str) -> list[str]:
+    """The non-empty settings among `names`, in order, without repeats."""
+    keys = [getattr(settings, name, "") for name in names]
+    return list(dict.fromkeys(key for key in keys if key))
+
+
+def _across_keys(models: list, errors: tuple[type[BaseException], ...]):
+    """The first key's model, handing the call to the next key's on `errors` (the ones
+    a different account can fix: its rate limit, a rejected key)."""
+    if len(models) == 1:
+        return models[0]
+    return ChatWithFallback(runnable=models[0], fallbacks=models[1:], exceptions_to_handle=errors)
 
 
 class ChatWithFallback(RunnableWithFallbacks):
@@ -108,9 +131,12 @@ class ChatWithFallback(RunnableWithFallbacks):
 
 
 def _build_groq(resolved: ResolvedModel) -> BaseChatModel:
+    import groq
+
     from apps.ai.groq_chat import LeadlineChatGroq
 
-    if not settings.GROQ_API_KEY:
+    keys = api_keys("GROQ_API_KEY", "GROQ_API_KEY_2")
+    if not keys:
         raise AIConfigError("GROQ_API_KEY is not set.")
     optional = {
         "temperature": resolved.temperature,
@@ -119,10 +145,10 @@ def _build_groq(resolved: ResolvedModel) -> BaseChatModel:
         "timeout": resolved.timeout_seconds,
         "max_retries": resolved.max_retries,
     }
-    return LeadlineChatGroq(
-        model=resolved.model,
-        api_key=settings.GROQ_API_KEY,
-        **{key: value for key, value in optional.items() if value is not None},
+    kwargs = {key: value for key, value in optional.items() if value is not None}
+    models = [LeadlineChatGroq(model=resolved.model, api_key=key, **kwargs) for key in keys]
+    return _across_keys(
+        models, (groq.RateLimitError, groq.AuthenticationError, groq.PermissionDeniedError)
     )
 
 
@@ -131,9 +157,10 @@ GEMINI_THINKING = {"low": 512, "medium": 2048, "high": 6144}
 
 
 def _build_gemini(resolved: ResolvedModel) -> BaseChatModel:
-    from apps.ai.gemini import ChatGemini
+    from apps.ai.gemini import ChatGemini, GeminiRateLimited
 
-    if not settings.GEMINI_API_KEY:
+    keys = api_keys("GEMINI_API_KEY", "GEMINI_API_KEY_2")
+    if not keys:
         raise AIConfigError("GEMINI_API_KEY is not set.")
     optional = {
         "temperature": resolved.temperature,
@@ -142,11 +169,9 @@ def _build_gemini(resolved: ResolvedModel) -> BaseChatModel:
         "timeout": resolved.timeout_seconds,
         "max_retries": resolved.max_retries,
     }
-    return ChatGemini(
-        model=resolved.model,
-        api_key=settings.GEMINI_API_KEY,
-        **{key: value for key, value in optional.items() if value is not None},
-    )
+    kwargs = {key: value for key, value in optional.items() if value is not None}
+    models = [ChatGemini(model=resolved.model, api_key=key, **kwargs) for key in keys]
+    return _across_keys(models, (GeminiRateLimited, KeyRejected))
 
 
 register_provider("groq", _build_groq)

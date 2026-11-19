@@ -9,7 +9,7 @@ from django.core.checks import Error, Warning, register
 
 from apps.ai.config.loader import load_models_file, load_sources_file
 from apps.ai.exceptions import AIConfigError
-from apps.ai.llm import registered_providers
+from apps.ai.llm import api_keys, registered_providers
 
 
 @register()
@@ -40,7 +40,7 @@ def ai_configuration(app_configs, **kwargs):
                     id="ai.W001",
                 )
             )
-    if settings.AI_LLM_PROVIDER == "groq" and not settings.GROQ_API_KEY:
+    if settings.AI_LLM_PROVIDER == "groq" and not api_keys("GROQ_API_KEY", "GROQ_API_KEY_2"):
         messages.append(Warning("GROQ_API_KEY is not set; agents cannot run.", id="ai.W002"))
     messages += _fallback_checks(models)
     return messages
@@ -60,7 +60,7 @@ def _fallback_checks(models) -> list:
             )
         ]
     messages = []
-    if provider == "gemini" and not settings.GEMINI_API_KEY:
+    if provider == "gemini" and not api_keys("GEMINI_API_KEY", "GEMINI_API_KEY_2"):
         messages.append(Warning("GEMINI_API_KEY is not set; there is no fallback.", id="ai.W004"))
     missing = [tier for tier in models.tiers if not settings.AI_FALLBACK_TIERS.get(tier)]
     if missing:
