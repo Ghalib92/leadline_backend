@@ -13,7 +13,7 @@ from apps.ai.exceptions import AIConfigError, RequestTooLarge, StructuredOutputE
 from apps.ai.gemini import ChatGemini, GeminiError, inline_refs
 from apps.ai.graphs.budget import Budget
 from apps.ai.graphs.runtime import TaskRuntime
-from apps.ai.llm import build_chat_model, fallback_model
+from apps.ai.llm import build_chat_model
 from apps.ai.schemas.clients import ClientVerdicts
 from apps.ai.structured import invoke_structured
 from apps.ai.testing import use_scripted_models
@@ -152,7 +152,8 @@ def test_a_bad_answer_is_not_sent_to_the_fallback(monkeypatch, settings, fallbac
 
 def test_no_fallback_without_settings(settings):
     settings.AI_FALLBACK_PROVIDER = ""
-    assert fallback_model(resolve_role("judge")) is None
+    settings.GROQ_API_KEY = "gsk_test"
+    assert resolve_role("judge").options == (("groq", "test-answer"),)
 
 
 def test_fallback_settings_are_checked(settings):

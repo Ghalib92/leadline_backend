@@ -41,7 +41,7 @@ def test_ai_ping_reports_each_tier(fake_provider, capsys):
     out = capsys.readouterr().out
     for tier in ("light", "research", "answer"):
         assert f"test-{tier}" in out
-    assert "All tiers reachable." in out
+    assert "All 3 checks passed." in out
     assert {r.tier for r in fake_provider} == {"light", "research", "answer"}
 
 
@@ -53,7 +53,7 @@ def test_ai_ping_fails_loudly(settings, monkeypatch):
 
     monkeypatch.setitem(llm._PROVIDERS, "fake", failing)
     settings.AI_LLM_PROVIDER = "fake"
-    with pytest.raises(CommandError, match="1 tier\\(s\\) failed: light"):
+    with pytest.raises(CommandError, match="1 check\\(s\\) failed: light/fake/-"):
         call_command("ai_ping", tiers=["light"])
 
 

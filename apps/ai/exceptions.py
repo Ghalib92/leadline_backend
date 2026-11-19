@@ -7,6 +7,13 @@ class KeyRejected(AIConfigError):
     backup key can still make the call."""
 
 
+class ProviderCooling(Exception):
+    """Skipped without a call: this key reported its rate limit or daily cap a moment
+    ago, and another option can take the call."""
+
+    status_code = 429  # counts as a rate limit (StructuredOutputError.rate_limited)
+
+
 class PromptError(Exception):
     """A prompt file is missing, or was rendered with the wrong variables."""
 

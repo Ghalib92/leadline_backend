@@ -89,6 +89,7 @@ def timers() -> dict[str, Timer]:
     plus its time, so Temporal never starts the same tick twice."""
     reminders = registered_jobs()["outreach.send_deadline_reminders"]
     digests = registered_jobs()["outreach.send_weekly_digests"]
+    model_checks = registered_jobs()["ai.check_models"]
     return {
         # Daily and weekly saved searches that are due.
         "discovery-scheduled-searches": Timer(
@@ -102,6 +103,8 @@ def timers() -> dict[str, Timer]:
         "outreach-deadline-reminders": Timer(JobWorkflow.run, daily_at(7), reminders.input([])),
         # The weekly digest email, Monday morning.
         "outreach-weekly-digest": Timer(JobWorkflow.run, weekly_at(0, 7), digests.input([])),
+        # One short call per AI provider, tier and key; emails when one is broken.
+        "ai-model-check": Timer(JobWorkflow.run, daily_at(6), model_checks.input([])),
     }
 
 

@@ -11,9 +11,9 @@ from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_groq import ChatGroq
 
-from apps.ai.config.loader import resolve_role
+from apps.ai.config.loader import provider_keys, resolve_role
 from apps.ai.exceptions import KeyRejected, RequestTooLarge
-from apps.ai.llm import api_keys, build_chat_model
+from apps.ai.llm import build_chat_model
 
 HOST = "generativelanguage.googleapis.com"
 
@@ -160,4 +160,4 @@ def test_a_backup_key_alone_is_enough(settings):
 def test_the_same_key_twice_is_used_once(settings):
     settings.GROQ_API_KEY = settings.GROQ_API_KEY_2 = "gsk_same"
     assert isinstance(model(), ChatGroq)
-    assert api_keys("GROQ_API_KEY", "GROQ_API_KEY_2") == ["gsk_same"]
+    assert provider_keys("groq") == [("GROQ_API_KEY", "gsk_same")]

@@ -103,6 +103,7 @@ def use_scripted_models(monkeypatch, settings, responders: dict, *, tokens_per_c
 
     monkeypatch.setitem(llm._PROVIDERS, "scripted", factory)
     settings.AI_LLM_PROVIDER = "scripted"
+    settings.AI_ROLE_PROVIDERS = False  # every role on the scripted model
     return models
 
 

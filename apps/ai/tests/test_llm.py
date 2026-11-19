@@ -16,7 +16,7 @@ def test_get_chat_model_builds_the_resolved_role(fake_provider):
 
 def test_unknown_provider_is_a_config_error(settings):
     settings.AI_LLM_PROVIDER = "nowhere"
-    with pytest.raises(AIConfigError, match="Unknown AI_LLM_PROVIDER 'nowhere'"):
+    with pytest.raises(AIConfigError, match="Unknown AI provider 'nowhere'"):
         get_chat_model("judge")
 
 

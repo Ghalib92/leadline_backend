@@ -15,6 +15,7 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.runnables import RunnableLambda
 from pydantic import ValidationError
 
+from apps.ai import cooldown
 from apps.ai.exceptions import KeyRejected
 from apps.ai.tools.http import get_http_client
 
@@ -42,12 +43,16 @@ class ChatGemini(BaseChatModel):
     thinking_budget: int | None = None  # tokens the model may think before answering
     timeout: float = 60
     max_retries: int = 2
+    key_name: str = "GEMINI_API_KEY"  # for logs; never the key itself
+    has_backup: bool = False  # a later option exists: rest this key when limited
 
     @property
     def _llm_type(self) -> str:
         return "gemini"
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+        if self.has_backup:
+            cooldown.skip_if_cooling("gemini", self.api_key, self.model, self.key_name)
         data = self._post(self._body(messages, kwargs.get("response_json_schema")))
         candidate = (data.get("candidates") or [{}])[0]
         parts = (candidate.get("content") or {}).get("parts") or []
@@ -134,6 +139,10 @@ class ChatGemini(BaseChatModel):
             if response.status_code in (401, 403) or "API_KEY_INVALID" in response.text:
                 raise KeyRejected("A GEMINI_API_KEY was rejected.")
             if response.status_code >= 400:
+                if response.status_code == 429:
+                    cooldown.cool(
+                        "gemini", self.api_key, self.model, self.key_name, _retry_delay(response)
+                    )
                 error = GeminiRateLimited if response.status_code == 429 else GeminiError
                 raise error(
                     f"Gemini returned HTTP {response.status_code}: {_error(response)}",
@@ -159,6 +168,16 @@ def inline_refs(schema: dict) -> dict:
         return node
 
     return resolve(schema)
+
+
+def _retry_delay(response) -> float | None:
+    """Gemini's suggested wait ("retryDelay": "37s"), when it gave one."""
+    try:
+        details = response.json().get("error", {}).get("details", [])
+        delay = next(d["retryDelay"] for d in details if "retryDelay" in d)
+        return float(str(delay).removesuffix("s"))
+    except (ValueError, AttributeError, StopIteration, KeyError, TypeError):
+        return None
 
 
 def _error(response) -> str:

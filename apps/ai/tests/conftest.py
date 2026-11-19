@@ -1,10 +1,17 @@
 import pytest
+from django.core.cache import cache
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 
 from apps.ai import llm
 from apps.ai.config.loader import load_models_file, load_sources_file
 from apps.ai.prompts.loader import load_prompt
+
+
+@pytest.fixture(autouse=True)
+def clear_cooldowns():
+    """Keys rested by one test (apps.ai.cooldown) must not be skipped in the next."""
+    cache.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -29,4 +36,5 @@ def fake_provider(monkeypatch, settings):
 
     monkeypatch.setitem(llm._PROVIDERS, "fake", factory)
     settings.AI_LLM_PROVIDER = "fake"
+    settings.AI_ROLE_PROVIDERS = False
     return built

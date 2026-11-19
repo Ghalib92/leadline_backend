@@ -73,6 +73,7 @@ def dossier_model(monkeypatch, settings):
 
     monkeypatch.setitem(llm._PROVIDERS, "fake", factory)
     settings.AI_LLM_PROVIDER = "fake"
+    settings.AI_ROLE_PROVIDERS = False
     queue.pending = models
     return queue
 

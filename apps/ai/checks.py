@@ -7,9 +7,9 @@ are warnings, so the rest of the API still runs on machines without AI configure
 from django.conf import settings
 from django.core.checks import Error, Warning, register
 
-from apps.ai.config.loader import load_models_file, load_sources_file
+from apps.ai.config.loader import has_keys, load_models_file, load_sources_file
 from apps.ai.exceptions import AIConfigError
-from apps.ai.llm import api_keys, registered_providers
+from apps.ai.llm import registered_providers
 
 
 @register()
@@ -40,10 +40,34 @@ def ai_configuration(app_configs, **kwargs):
                     id="ai.W001",
                 )
             )
-    if settings.AI_LLM_PROVIDER == "groq" and not api_keys("GROQ_API_KEY", "GROQ_API_KEY_2"):
-        messages.append(Warning("GROQ_API_KEY is not set; agents cannot run.", id="ai.W002"))
+    if not has_keys(settings.AI_LLM_PROVIDER):
+        messages.append(
+            Warning(
+                f"{_key_name(settings.AI_LLM_PROVIDER)} is not set; agents cannot run.",
+                id="ai.W002",
+            )
+        )
     messages += _fallback_checks(models)
+    messages += _role_provider_checks(models)
     return messages
+
+
+def _role_provider_checks(models) -> list:
+    """A role naming a provider that isn't registered is an error (a typo in
+    models.yaml); one without a key or model is fine (it's skipped until configured)."""
+    unknown = {
+        role: [name for name in spec.providers if name not in registered_providers()]
+        for role, spec in models.roles.items()
+    }
+    return [
+        Error(
+            f"models.yaml: role {role!r} lists unknown provider(s) {', '.join(names)}.",
+            hint=f"Use one of: {', '.join(sorted(registered_providers()))}.",
+            id="ai.E004",
+        )
+        for role, names in unknown.items()
+        if names
+    ]
 
 
 def _fallback_checks(models) -> list:
@@ -60,8 +84,10 @@ def _fallback_checks(models) -> list:
             )
         ]
     messages = []
-    if provider == "gemini" and not api_keys("GEMINI_API_KEY", "GEMINI_API_KEY_2"):
-        messages.append(Warning("GEMINI_API_KEY is not set; there is no fallback.", id="ai.W004"))
+    if not has_keys(provider):
+        messages.append(
+            Warning(f"{_key_name(provider)} is not set; there is no fallback.", id="ai.W004")
+        )
     missing = [tier for tier in models.tiers if not settings.AI_FALLBACK_TIERS.get(tier)]
     if missing:
         messages.append(
@@ -73,3 +99,8 @@ def _fallback_checks(models) -> list:
             )
         )
     return messages
+
+
+def _key_name(provider: str) -> str:
+    names = settings.AI_PROVIDER_KEYS.get(provider) or [f"{provider.upper()}_API_KEY"]
+    return names[0]

@@ -263,3 +263,11 @@ def test_format_documents_without_documents():
 
 def test_api_schema_matches_the_dossier_model():
     assert set(DossierContentSerializer().fields) == set(Dossier.model_fields)
+
+
+def test_dossier_items_are_trimmed():
+    from apps.ai.schemas.dossier import Dossier
+
+    dossier = Dossier.model_validate({"summary": " A firm. ", "search_keywords": [" web Kenya "]})
+    assert dossier.summary == "A firm."
+    assert dossier.search_keywords == ["web Kenya"]

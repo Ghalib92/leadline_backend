@@ -31,6 +31,8 @@ class ModelParams(BaseModel):
 
 class RoleSpec(ModelParams):
     tier: str
+    # Providers to try first, in order; the default order follows for the rest.
+    providers: list[str] = Field(default_factory=list)
     description: str = ""
 
 
@@ -59,8 +61,16 @@ class ResolvedModel(ModelParams):
 
     role: str
     tier: str
-    provider: str
+    provider: str  # the first option's
     model: str
+    # Every (provider, model) to try, in order: when one can't answer (rate limit, daily
+    # cap, outage, request too large), the next takes the same call.
+    options: tuple[tuple[str, str], ...] = ()
+    # Set when building one option: a later option exists, so this one fails fast
+    # (no retries, skipped while its key cools down) instead of waiting.
+    has_backup: bool = False
+    # Only these key settings (diagnostics check one key at a time); empty = all.
+    key_names: tuple[str, ...] = ()
 
 
 @cache
@@ -92,17 +102,62 @@ def resolve_tier(tier: str) -> ResolvedModel:
 
 
 def _resolve(*, role, tier, overrides, defaults) -> ResolvedModel:
-    model = settings.AI_MODEL_TIERS.get(tier, "")
-    if not model:
+    order = provider_order(overrides.providers if overrides is not None else ())
+    options = tuple(
+        (provider, model)
+        for provider in order
+        if (model := model_for(provider, tier)) and has_keys(provider)
+    )
+    if not options:  # none has a key: the first with a model, so building it says why
+        options = tuple((p, model) for p in order if (model := model_for(p, tier)))[:1]
+    if not options:
         raise AIConfigError(
             f"No model configured for the {tier!r} tier. Set {tier.upper()}_MODEL in .env."
         )
     params = defaults.model_dump(exclude_none=True)
     if overrides is not None:
-        params.update(overrides.model_dump(exclude_none=True, exclude={"tier", "description"}))
+        params.update(
+            overrides.model_dump(exclude_none=True, exclude={"tier", "description", "providers"})
+        )
+    provider, model = options[0]
     return ResolvedModel(
-        role=role, tier=tier, provider=settings.AI_LLM_PROVIDER, model=model, **params
+        role=role, tier=tier, provider=provider, model=model, options=options, **params
     )
+
+
+def provider_order(preferred=()) -> list[str]:
+    """The role's preferred providers (when AI_ROLE_PROVIDERS is on), then the default
+    order, without repeats."""
+    order = list(preferred) if settings.AI_ROLE_PROVIDERS else []
+    order += [settings.AI_LLM_PROVIDER, settings.AI_FALLBACK_PROVIDER]
+    return list(dict.fromkeys(name for name in order if name))
+
+
+def model_for(provider: str, tier: str) -> str:
+    """The provider's model id for a tier: <PROVIDER>_<TIER>_MODEL, else the default
+    provider's <TIER>_MODEL or the fallback provider's FALLBACK_<TIER>_MODEL."""
+    model = settings.AI_PROVIDER_MODELS.get(provider, {}).get(tier, "")
+    if not model and provider == settings.AI_LLM_PROVIDER:
+        model = settings.AI_MODEL_TIERS.get(tier, "")
+    if not model and provider == settings.AI_FALLBACK_PROVIDER:
+        model = settings.AI_FALLBACK_TIERS.get(tier, "")
+    return model
+
+
+def provider_keys(provider: str, only=()) -> list[tuple[str, str]]:
+    """(setting name, key) for each of the provider's keys that is set, without repeats."""
+    keys, seen = [], set()
+    for name in settings.AI_PROVIDER_KEYS.get(provider, []):
+        key = getattr(settings, name, "")
+        if key and key not in seen and (not only or name in only):
+            keys.append((name, key))
+            seen.add(key)
+    return keys
+
+
+def has_keys(provider: str) -> bool:
+    """Providers without key settings (test fakes) need none."""
+    return provider not in settings.AI_PROVIDER_KEYS or bool(provider_keys(provider))
 
 
 # ---------------------------------------------------------------------------

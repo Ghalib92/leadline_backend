@@ -1,16 +1,14 @@
-import time
-
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.ai.config.loader import load_models_file, resolve_tier
-from apps.ai.llm import build_chat_model
-from apps.ai.prompts import load_prompt
+from apps.ai.config.loader import load_models_file, resolve_role
+from apps.ai.health import check_models
 
 
 class Command(BaseCommand):
     help = (
-        "Send one short prompt to each model tier to confirm the provider is reachable. "
-        "Makes real API calls."
+        "Send one short prompt to every model: each tier, on each provider in use, with "
+        "each of its keys. Makes real API calls. --roles lists who answers each role "
+        "instead, without calls."
     )
 
     def add_arguments(self, parser):
@@ -20,23 +18,28 @@ class Command(BaseCommand):
             dest="tiers",
             help="Tier to check (repeatable). Defaults to every tier in models.yaml.",
         )
+        parser.add_argument(
+            "--roles",
+            action="store_true",
+            help="Show each role's providers and models, in the order they are tried.",
+        )
 
-    def handle(self, *args, tiers=None, **options):
-        tiers = tiers or load_models_file().tiers
-        prompt = load_prompt("ping").render()
-        failures = []
-        for tier in tiers:
-            resolved = resolve_tier(tier)
-            started = time.monotonic()
-            try:
-                reply = build_chat_model(resolved).invoke(prompt)
-            except Exception as exc:  # diagnostics: report every failure, keep going
-                failures.append(tier)
-                self.stderr.write(f"{tier:<9} {resolved.model:<24} FAILED  {exc}")
-                continue
-            elapsed = time.monotonic() - started
-            text = str(reply.content).strip().replace("\n", " ")[:80]
-            self.stdout.write(f"{tier:<9} {resolved.model:<24} {elapsed:5.1f}s  {text}")
-        if failures:
-            raise CommandError(f"{len(failures)} tier(s) failed: {', '.join(failures)}")
-        self.stdout.write(self.style.SUCCESS("All tiers reachable."))
+    def handle(self, *args, tiers=None, roles=False, **options):
+        if roles:
+            for role in load_models_file().roles:
+                resolved = resolve_role(role)
+                order = "  ->  ".join(f"{p}:{m}" for p, m in resolved.options)
+                self.stdout.write(f"{role:<22} {resolved.tier:<9} {order}")
+            return
+        checks = check_models(tiers)
+        for check in checks:
+            where = f"{check.tier:<9} {check.provider:<7} {check.key_name or '-':<17}"
+            if check.ok:
+                self.stdout.write(f"{where} {check.model:<24} {check.seconds:5.1f}s  {check.reply}")
+            else:
+                state = "BROKEN" if check.broken else "FAILED"
+                self.stderr.write(f"{where} {check.model:<24} {state}  {check.error}")
+        failed = [check.label for check in checks if not check.ok]
+        if failed:
+            raise CommandError(f"{len(failed)} check(s) failed: {', '.join(failed)}")
+        self.stdout.write(self.style.SUCCESS(f"All {len(checks)} checks passed."))

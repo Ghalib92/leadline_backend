@@ -95,6 +95,7 @@ def test_temporal_schedules_cover_every_timer():
         "discovery-recover-runs",
         "outreach-deadline-reminders",
         "outreach-weekly-digest",
+        "ai-model-check",
     }
 
 

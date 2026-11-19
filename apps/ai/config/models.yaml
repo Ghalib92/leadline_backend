@@ -5,6 +5,20 @@
 # switching models is an .env change. Role settings override `defaults`; any
 # value left unset falls back to the provider's own default.
 #
+# Providers: every role tries AI_LLM_PROVIDER, then AI_FALLBACK_PROVIDER. A role's
+# `providers` list goes first, and the default order follows as its backups:
+# `providers: [gemini]` means Gemini, then Groq. A call one provider can't answer
+# (rate limit, daily cap, outage, request too large) goes to the next; each
+# provider's backup key (*_API_KEY_2) is tried before moving on. A provider with no
+# key or no model for the tier is skipped. Each provider's model per tier comes from
+# <PROVIDER>_<TIER>_MODEL (e.g. GEMINI_ANSWER_MODEL), else from the settings above
+# (FALLBACK_<TIER>_MODEL for the fallback provider). `manage.py ai_ping --roles`
+# shows the order each role ends up with.
+#
+# Gemini goes first for roles that read whole documents or write long ones: Groq's
+# free plan refuses a single request over the model's per-minute token limit, and
+# Gemini reads very long inputs. Short, frequent calls stay on Groq (fast).
+#
 # reasoning_effort (low | medium | high) applies to reasoning models such as
 # gpt-oss. Remove it from a role if its tier points at a non-reasoning model.
 version: 1
@@ -53,14 +67,20 @@ roles:
     max_tokens: 6000
     description: Scores a batch of businesses as client leads against the organization's clients brief.
   proposal_requirements:
+    # Reads the whole call for proposals.
+    providers: [gemini]
     tier: answer
     reasoning_effort: medium
     max_tokens: 8000
+    timeout_seconds: 180  # background work; Gemini thinks before long answers
     description: Reads the call and lists what the proposal must contain and how it is judged.
   tender_requirements:
+    # Reads the tender's documents, often long.
+    providers: [gemini]
     tier: answer
     reasoning_effort: medium
     max_tokens: 8000
+    timeout_seconds: 180  # background work; Gemini thinks before long answers
     description: Reads a tender's documents and lists its mandatory requirements, key dates, submission rules and scoring.
   bid_checklist:
     tier: answer
@@ -84,9 +104,12 @@ roles:
     max_tokens: 6000
     description: Checks the draft against the requirements and lists what to fix.
   dossier:
+    # Reads the profile and every document.
+    providers: [gemini]
     tier: answer
     reasoning_effort: medium
     max_tokens: 8000
+    timeout_seconds: 180  # background work; Gemini thinks before long answers
     description: Summarises the profile, preferences and documents into the company dossier.
   preference_advisor:
     tier: answer
@@ -94,6 +117,8 @@ roles:
     max_tokens: 2000
     description: Turns repeated rejection reasons into suggested excluded keywords.
   eval_grader:
+    # Grades the writers' drafts: not the writers' own provider (Groq).
+    providers: [gemini]
     tier: answer
     reasoning_effort: medium
     max_tokens: 3000
@@ -131,6 +156,8 @@ roles:
     max_tokens: 3000
     description: Lists the cover letter's sentences that claim what the candidate's CV doesn't support.
   cv_reader:
+    # Reads a whole CV.
+    providers: [gemini]
     tier: research
     reasoning_effort: low
     max_tokens: 1500

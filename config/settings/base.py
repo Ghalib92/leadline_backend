@@ -322,6 +322,29 @@ AI_FALLBACK_TIERS = {
 }
 GEMINI_API_KEY = config("GEMINI_API_KEY", default="")
 GEMINI_API_KEY_2 = config("GEMINI_API_KEY_2", default="")
+# Each provider's keys, in the order they are tried. A new provider (Claude, OpenAI,
+# DeepSeek) adds its key settings here and its models below.
+AI_PROVIDER_KEYS = {
+    "groq": ["GROQ_API_KEY", "GROQ_API_KEY_2"],
+    "gemini": ["GEMINI_API_KEY", "GEMINI_API_KEY_2"],
+}
+# Each provider's model per tier, as <PROVIDER>_<TIER>_MODEL. Left empty, the default
+# provider uses <TIER>_MODEL and the fallback provider FALLBACK_<TIER>_MODEL.
+AI_PROVIDER_MODELS = {
+    provider: {
+        tier: config(f"{provider.upper()}_{tier.upper()}_MODEL", default="")
+        for tier in ("light", "research", "answer")
+    }
+    for provider in AI_PROVIDER_KEYS
+}
+# Roles try the providers models.yaml lists for them first (then the default order).
+# Off: every role uses AI_LLM_PROVIDER, then AI_FALLBACK_PROVIDER.
+AI_ROLE_PROVIDERS = config("AI_ROLE_PROVIDERS", cast=bool, default=True)
+# A key that reports its rate limit or daily cap is skipped while another option is
+# left, for as long as the provider says (at most this long), then tried again.
+AI_COOLDOWN_MAX_SECONDS = config("AI_COOLDOWN_MAX_SECONDS", cast=int, default=3600)
+# Who hears when the daily model check finds a key rejected or a model gone.
+AI_ALERT_EMAILS = config("AI_ALERT_EMAILS", cast=Csv(), default="")
 
 # Agent tools. Tavily is the web search provider; its dev plan allows 100 requests a
 # minute, so stay below that (the limit is shared through the cache).

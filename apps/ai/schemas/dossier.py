@@ -7,7 +7,8 @@ class Dossier(BaseModel):
     Field descriptions are sent to the model as part of the output schema.
     """
 
-    model_config = ConfigDict(extra="ignore")
+    # Gemini sometimes starts list items with a space; keywords feed searches.
+    model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
 
     summary: str = Field(
         description=(
