@@ -33,6 +33,9 @@ class RoleSpec(ModelParams):
     tier: str
     # Providers to try first, in order; the default order follows for the rest.
     providers: list[str] = Field(default_factory=list)
+    # Reads only public content (published calls, tenders, web pages), so any provider
+    # may take it. Otherwise only AI_PRIVATE_DATA_PROVIDERS do.
+    public_inputs: bool = False
     description: str = ""
 
 
@@ -103,6 +106,13 @@ def resolve_tier(tier: str) -> ResolvedModel:
 
 def _resolve(*, role, tier, overrides, defaults) -> ResolvedModel:
     order = provider_order(overrides.providers if overrides is not None else ())
+    if overrides is not None and not overrides.public_inputs:
+        order = [name for name in order if may_receive_private_data(name)]
+        if not order:
+            raise AIConfigError(
+                f"No provider may receive the {role!r} role's private data. Add one with a "
+                "key to AI_PRIVATE_DATA_PROVIDERS."
+            )
     options = tuple(
         (provider, model)
         for provider in order
@@ -117,7 +127,10 @@ def _resolve(*, role, tier, overrides, defaults) -> ResolvedModel:
     params = defaults.model_dump(exclude_none=True)
     if overrides is not None:
         params.update(
-            overrides.model_dump(exclude_none=True, exclude={"tier", "description", "providers"})
+            overrides.model_dump(
+                exclude_none=True,
+                exclude={"tier", "description", "providers", "public_inputs"},
+            )
         )
     provider, model = options[0]
     return ResolvedModel(
@@ -131,6 +144,14 @@ def provider_order(preferred=()) -> list[str]:
     order = list(preferred) if settings.AI_ROLE_PROVIDERS else []
     order += [settings.AI_LLM_PROVIDER, settings.AI_FALLBACK_PROVIDER]
     return list(dict.fromkeys(name for name in order if name))
+
+
+def may_receive_private_data(provider: str) -> bool:
+    """Real providers (those with key settings) only when AI_PRIVATE_DATA_PROVIDERS
+    lists them; test fakes always."""
+    return (
+        provider not in settings.AI_PROVIDER_KEYS or provider in settings.AI_PRIVATE_DATA_PROVIDERS
+    )
 
 
 def model_for(provider: str, tier: str) -> str:

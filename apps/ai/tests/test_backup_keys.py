@@ -52,6 +52,7 @@ def groq_keys(monkeypatch, settings):
 def gemini_keys(settings):
     settings.AI_FALLBACK_PROVIDER = "gemini"
     settings.GEMINI_API_KEY = "gem_first"
+    settings.AI_PRIVATE_DATA_PROVIDERS = ["groq", "gemini"]
     settings.GEMINI_API_KEY_2 = "gem_second"
     settings.AI_FALLBACK_TIERS = {"light": "g-lite", "research": "g-flash", "answer": "g-flash"}
 

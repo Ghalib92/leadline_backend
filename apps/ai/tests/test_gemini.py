@@ -123,6 +123,7 @@ def rate_limit(prompt):
 def fallback(settings):
     settings.AI_FALLBACK_PROVIDER = "gemini"
     settings.GEMINI_API_KEY = "key"
+    settings.AI_PRIVATE_DATA_PROVIDERS = ["groq", "gemini"]
     settings.AI_FALLBACK_TIERS = {
         "light": "gemini-lite",
         "research": "gemini-flash",

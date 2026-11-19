@@ -45,6 +45,7 @@ def both(monkeypatch, settings):
     settings.GEMINI_API_KEY, settings.GEMINI_API_KEY_2 = "gem_1", "gem_2"
     settings.AI_FALLBACK_PROVIDER = "gemini"
     settings.AI_FALLBACK_TIERS = {"light": "g-lite", "research": "g-lite", "answer": "g-flash"}
+    settings.AI_PRIVATE_DATA_PROVIDERS = ["groq", "gemini"]  # as with Gemini billing on
     calls, refusals = [], {}
 
     def generate(self, messages, stop=None, run_manager=None, **kwargs):

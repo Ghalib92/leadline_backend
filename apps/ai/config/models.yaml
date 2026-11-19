@@ -15,6 +15,13 @@
 # (FALLBACK_<TIER>_MODEL for the fallback provider). `manage.py ai_ping --roles`
 # shows the order each role ends up with.
 #
+# Private data: every role sees users' private data (company documents and summary,
+# CVs, drafts, decisions) unless marked `public_inputs: true` (it reads only published
+# calls, tenders and web pages). Private roles go only to AI_PRIVATE_DATA_PROVIDERS
+# (.env); other providers are left out of their order. Gemini's free tier is not one:
+# Google uses its prompts to improve its products. The `providers: [gemini]` below
+# take effect for private roles once Gemini is listed there (billing on).
+#
 # Gemini goes first for roles that read whole documents or write long ones: Groq's
 # free plan refuses a single request over the model's per-minute token limit, and
 # Gemini reads very long inputs. Short, frequent calls stay on Groq (fast).
@@ -44,6 +51,7 @@ roles:
     reasoning_effort: low
     description: Runs searches and source queries, and picks promising results.
   verifier:
+    public_inputs: true
     tier: research
     reasoning_effort: medium
     description: Reads opportunity pages, extracts the facts and checks they are real and open.
@@ -67,6 +75,7 @@ roles:
     max_tokens: 6000
     description: Scores a batch of businesses as client leads against the organization's clients brief.
   proposal_requirements:
+    public_inputs: true
     # Reads the whole call for proposals.
     providers: [gemini]
     tier: answer
@@ -75,6 +84,7 @@ roles:
     timeout_seconds: 180  # background work; Gemini thinks before long answers
     description: Reads the call and lists what the proposal must contain and how it is judged.
   tender_requirements:
+    public_inputs: true
     # Reads the tender's documents, often long.
     providers: [gemini]
     tier: answer
@@ -95,7 +105,8 @@ roles:
   drafter:
     # Gemini first (2026-11-19 side-by-side): both graders scored it more honest, and
     # gpt-oss invented a "delivered on time and on budget" claim where Gemini wrote a
-    # [TODO]. Slower (about a minute a section), but sections run in parallel.
+    # [TODO]. Slower (about a minute a section), but sections run in parallel. Applies
+    # once Gemini may receive private data (billing on); until then Groq writes.
     providers: [gemini]
     tier: answer
     reasoning_effort: medium
@@ -133,6 +144,7 @@ roles:
     max_tokens: 1024
     description: Cheap yes/no and labelling calls (language, spam, duplicates).
   lead_scout:
+    public_inputs: true
     tier: research
     reasoning_effort: low
     description: Finds relevant funder contacts for an approved opportunity.
@@ -175,6 +187,7 @@ roles:
     max_tokens: 3000
     description: Writes an executive brief for a newly found opportunity (fit, eligibility checklist, documents needed, effort, next step).
   source_reader:
+    public_inputs: true
     tier: research
     reasoning_effort: low
     max_tokens: 3000

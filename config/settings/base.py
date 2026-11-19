@@ -337,6 +337,13 @@ AI_PROVIDER_MODELS = {
     }
     for provider in AI_PROVIDER_KEYS
 }
+# Providers that may receive users' private data: company documents and summaries,
+# CVs, drafts, decisions. Every role is private unless models.yaml marks it
+# `public_inputs` (it reads only public pages and calls). Gemini's free tier is not
+# here: Google uses free-tier prompts to improve its products and its terms say not to
+# send personal or confidential information. Add a provider once its terms keep the
+# data private (Gemini with billing on, Claude, OpenAI).
+AI_PRIVATE_DATA_PROVIDERS = config("AI_PRIVATE_DATA_PROVIDERS", cast=Csv(), default="groq")
 # Roles try the providers models.yaml lists for them first (then the default order).
 # Off: every role uses AI_LLM_PROVIDER, then AI_FALLBACK_PROVIDER.
 AI_ROLE_PROVIDERS = config("AI_ROLE_PROVIDERS", cast=bool, default=True)

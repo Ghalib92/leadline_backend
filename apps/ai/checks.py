@@ -49,6 +49,17 @@ def ai_configuration(app_configs, **kwargs):
         )
     messages += _fallback_checks(models)
     messages += _role_provider_checks(models)
+    missing_default_key = any(message.id == "ai.W002" for message in messages)
+    private = settings.AI_PRIVATE_DATA_PROVIDERS
+    if not missing_default_key and not any(has_keys(name) for name in private):
+        messages.append(
+            Warning(
+                "No provider in AI_PRIVATE_DATA_PROVIDERS has a key; roles that see users' "
+                "private data (most of them) cannot run.",
+                hint="Usually AI_PRIVATE_DATA_PROVIDERS=groq with GROQ_API_KEY set.",
+                id="ai.W006",
+            )
+        )
     return messages
 
 
