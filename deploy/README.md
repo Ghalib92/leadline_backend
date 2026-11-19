@@ -1,10 +1,10 @@
 # Deploying Leadline
 
 ```
-browser ──► leadline.digitalappex.com        Vercel (leadline-ui, region fra1)
+browser ──► leadline.digitalappex.co.ke        Vercel (leadline-ui, region fra1)
    │               │ every page and /api/* call, server-side
    │               ▼
-   └─files──► leadline-api.digitalappex.com   the server: Caddy (/srv/edge) ─► api
+   └─files──► leadline-api.digitalappex.co.ke   the server: Caddy (/srv/edge) ─► api
                                                api, worker, temporal, postgres, redis
 ```
 
@@ -63,7 +63,7 @@ docker compose exec -T postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTG
 
 ## First setup (done once)
 
-1. **DNS (Cloudflare, digitalappex.com).**
+1. **DNS (Cloudflare, digitalappex.co.ke).**
    - `A leadline-api → <server-ip>`, **DNS only** (grey cloud): Caddy gets its own
      certificate from Let's Encrypt, and sees visitors' real addresses.
    - `CNAME leadline → <the value Vercel shows>`, **DNS only** (Vercel's advice: it
@@ -71,11 +71,11 @@ docker compose exec -T postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTG
 2. **Server.** `mkdir /srv/leadline`, write `/srv/leadline/.env`, run the deploy.
 3. **Vercel.** Import the `leadline-ui` GitHub repo (framework: React Router). Settings:
    - Environment variables (Production):
-     `API_URL=https://leadline-api.digitalappex.com/api/v1`,
+     `API_URL=https://leadline-api.digitalappex.co.ke/api/v1`,
      `SESSION_SECRET=<openssl rand -base64 32>`,
      `UI_PROXY_SECRET=<the same as in /srv/leadline/.env>`,
-     `VITE_SITE_URL=https://leadline.digitalappex.com`.
-   - Domains: add `leadline.digitalappex.com`.
+     `VITE_SITE_URL=https://leadline.digitalappex.co.ke`.
+   - Domains: add `leadline.digitalappex.co.ke`.
    - The region comes from `vercel.json` (`fra1`).
 
 ## Why it is built this way

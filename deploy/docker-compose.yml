@@ -1,5 +1,5 @@
 # Leadline's backend on the server: the API, the Temporal worker, and what they need.
-# The UI runs on Vercel and calls the API at https://leadline-api.digitalappex.com.
+# The UI runs on Vercel and calls the API at https://leadline-api.digitalappex.co.ke.
 #
 # Lives at /srv/leadline/docker-compose.yml, next to .env and backend/ (the code).
 # scripts/deploy.sh puts it there; see deploy/README.md.

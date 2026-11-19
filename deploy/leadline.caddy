@@ -1,6 +1,6 @@
 # Leadline's API. scripts/deploy.sh copies this to /srv/edge/sites/ and reloads Caddy.
 # The UI is on Vercel; its server calls this API for every visitor.
-leadline-api.digitalappex.com {
+leadline-api.digitalappex.co.ke {
 	encode zstd gzip
 
 	# Documents go up to 25 MB (ORGANIZATION_DOCUMENT_MAX_UPLOAD_MB); a little room.
