@@ -461,3 +461,18 @@ Gemini as backup, Temporal for background jobs, React Router on the front end.
   Mohaa's test: would a business owner know what each one is? Now the labels say what
   things do ("Searches", "Funder emails") in the order people use the app, and a short
   tour walks through it once.
+
+### An email you could see but the form couldn't
+- Mohaa typed an email into Invite and got "Add at least one email" with the address
+  right there. The box only turned text into an entry on Enter; clicking a button left
+  it as loose text the form never saw (and onboarding dropped the invite silently).
+  Every list box now keeps what was typed when you leave it, and email boxes split
+  pasted lists on spaces too. Lesson: a hidden "press Enter" rule is a bug, not a
+  tip.
+
+### Free map servers fail together
+- The first live client search lost its Nairobi half: both public OpenStreetMap
+  servers answered 502/504 at once. A third mirror answered in two seconds from the
+  production server, so there are now four, tried in order. The same search then
+  succeeded with 19 leads. Lesson: test fallbacks from the server, not your laptop;
+  two mirrors that fail from home may differ from the ones that fail in Frankfurt.
