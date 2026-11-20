@@ -110,15 +110,19 @@ def test_osm_geocodes_a_place_once(osm_web):
 
 def test_osm_tries_the_next_server_when_one_is_busy(web):
     web.route("nominatim.openstreetmap.org", handler=lambda r: httpx.Response(200, json=NAIROBI))
-    web.route("overpass-api.de", handler=lambda r: httpx.Response(504, text="busy"))
+    web.route("overpass-api.de", handler=lambda r: httpx.Response(502, text="busy"))
+    web.route("overpass.kumi.systems", handler=lambda r: httpx.Response(504, text="busy"))
     web.route("maps.mail.ru", handler=lambda r: httpx.Response(200, json=HOTELS))
     assert len(source("osm_places").search(query(), max_results=10)) == 2
+    assert web.count("overpass.private.coffee") == 0  # stops at the first answer
 
 
 def test_osm_says_when_every_server_is_busy(web):
     web.route("nominatim.openstreetmap.org", handler=lambda r: httpx.Response(200, json=NAIROBI))
     web.route("overpass-api.de", handler=lambda r: httpx.Response(504, text="busy"))
+    web.route("overpass.kumi.systems", handler=lambda r: httpx.Response(502, text="busy"))
     web.route("maps.mail.ru", handler=lambda r: httpx.Response(429, text="slow down"))
+    web.route("overpass.private.coffee", handler=lambda r: httpx.Response(503, text="down"))
     with pytest.raises(SearchError, match="busy"):
         source("osm_places").search(query(), max_results=10)
 

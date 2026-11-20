@@ -174,10 +174,13 @@ sources:
     covers: Businesses mapped on OpenStreetMap, free in any country. Names and places are good; phone numbers and websites are often missing, so a missing website there is no evidence the business has none.
     options:
       geocoder: https://nominatim.openstreetmap.org/search
-      # Tried in order; public Overpass servers are often busy.
+      # Tried in order; public Overpass servers are often busy. On 2026-11-20 the
+      # first two failed together while kumi.systems answered.
       endpoints:
         - https://overpass-api.de/api/interpreter
+        - https://overpass.kumi.systems/api/interpreter
         - https://maps.mail.ru/osm/tools/overpass/api/interpreter
+        - https://overpass.private.coffee/api/interpreter
       timeout_seconds: 60
       # OpenStreetMap tags for each kind of customer (BusinessCategory); "other" has none.
       tags:
